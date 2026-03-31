@@ -584,8 +584,7 @@
       selectedWinnersByPot: {},
       selectedRechargePlayerId: "",
       isSheetOpen: false,
-      lastSeenResultMessage: "",
-      authUserReady: false
+      lastSeenResultMessage: ""
     };
 
     const authView = document.getElementById("authView");
@@ -659,7 +658,7 @@
     }
 
     function createId() {
-      return crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+      return auth.currentUser?.uid || crypto.randomUUID().replace(/-/g, "").slice(0, 28);
     }
 
     function emptyChips() {
@@ -1065,9 +1064,7 @@
 
           try {
             const nextValue = mutator(room);
-            if (nextValue === null) {
-              return null;
-            }
+            if (nextValue === null) return null;
             room.updatedAt = Date.now();
             return room;
           } catch (err) {
@@ -1076,14 +1073,10 @@
           }
         });
 
-        if (capturedError) {
-          throw new Error(capturedError);
-        }
+        if (capturedError) throw new Error(capturedError);
 
         if (!result.committed) {
-          if (!result.snapshot.exists()) {
-            throw new Error("방을 찾을 수 없습니다.");
-          }
+          if (!result.snapshot.exists()) throw new Error("방을 찾을 수 없습니다.");
           throw new Error("요청이 적용되지 않았습니다.");
         }
 
@@ -1096,7 +1089,6 @@
     function saveSession() {
       localStorage.setItem("poker-room-session", JSON.stringify({
         roomCode: state.roomCode,
-        playerId: state.playerId,
         playerName: state.playerName
       }));
     }
@@ -1111,7 +1103,6 @@
         if (!raw) return;
         const parsed = JSON.parse(raw);
         state.roomCode = parsed.roomCode || "";
-        state.playerId = parsed.playerId || "";
         state.playerName = parsed.playerName || "";
         if (state.playerName) playerNameInput.value = state.playerName;
         if (state.roomCode) roomCodeInput.value = state.roomCode;
@@ -1131,7 +1122,7 @@
       }
       state.room = null;
       state.roomCode = "";
-      state.playerId = "";
+      state.playerName = "";
       state.selectedWinnersByPot = {};
       state.selectedRechargePlayerId = "";
       state.lastSeenResultMessage = "";
@@ -1172,11 +1163,10 @@
         }
       }
 
-      if (!roomCode || !roomRef) {
-        throw new Error("방 코드를 생성하지 못했습니다.");
-      }
+      if (!roomCode || !roomRef) throw new Error("방 코드를 생성하지 못했습니다.");
 
-      const playerId = createId();
+      state.playerId = createId();
+      const playerId = state.playerId;
       const initialAmount = 5000;
 
       const hostPlayer = {
@@ -1217,10 +1207,8 @@
       await set(roomRef, room);
 
       state.roomCode = roomCode;
-      state.playerId = playerId;
       state.playerName = playerName;
       saveSession();
-
       subscribeRoom(roomCode);
     }
 
@@ -1233,6 +1221,8 @@
       if (!roomCode) throw new Error("방 코드를 입력하세요.");
       if (!playerName) throw new Error("이름을 입력하세요.");
 
+      state.playerId = createId();
+      const playerId = state.playerId;
       const roomRef = ref(db, `rooms/${roomCode}`);
 
       let precheckSnap;
@@ -1251,18 +1241,12 @@
         throw new Error("대기방에서만 참가할 수 있습니다.");
       }
 
-      if (!state.playerId) {
-        state.playerId = createId();
-      }
-
-      const playerId = state.playerId;
-
       const room = await mutateRoom(roomCode, (roomData) => {
         if (!roomData) throw new Error("방을 찾을 수 없습니다.");
         if (roomData.status !== "waiting") throw new Error("대기방에서만 참가할 수 있습니다.");
 
-        const activePlayers = roomData.players.filter((p) => !p.left);
-        if (activePlayers.length >= MAX_PLAYERS) throw new Error("최대 4명입니다.");
+        const active = roomData.players.filter((p) => !p.left);
+        if (active.length >= MAX_PLAYERS) throw new Error("최대 4명입니다.");
 
         const duplicateName = roomData.players.some((p) => p.name === playerName && !p.left && p.id !== playerId);
         if (duplicateName) throw new Error("같은 이름이 이미 있습니다.");
@@ -1307,15 +1291,11 @@
         roomData.lastActionText = `${playerName} 님이 대기방에 참가했습니다.`;
       });
 
-      if (!room) {
-        throw new Error("방 참가에 실패했습니다.");
-      }
+      if (!room) throw new Error("방 참가에 실패했습니다.");
 
       state.roomCode = roomCode;
-      state.playerId = playerId;
       state.playerName = playerName;
       saveSession();
-
       subscribeRoom(roomCode);
     }
 
@@ -1330,9 +1310,7 @@
             room.lastActionText = `${me.name} 님이 방을 나갔습니다.`;
 
             const active = room.players.filter((p) => !p.left);
-            if (active.length === 0) {
-              return null;
-            }
+            if (active.length === 0) return null;
 
             if (room.hostPlayerId === state.playerId) {
               room.hostPlayerId = active[0].id;
@@ -1780,7 +1758,7 @@
           const targetTotalBet = validateMoney(targetBetInput.value);
 
           if (targetTotalBet <= room.currentBet) {
-            throw new Error("Raise 후 총 베팅 금액은 현재 베팅보다 커야 합니다.");
+            throw new Error("Raise 후 내 총 베팅 금액은 현재 베팅보다 커야 합니다.");
           }
 
           const addAmount = targetTotalBet - player.betAmount;
@@ -2011,13 +1989,13 @@
       if (!user) return;
 
       state.authReady = true;
-      state.authUserReady = true;
+      state.playerId = user.uid;
       renderAuthReadyState();
 
       initSession();
       initQueryRoom();
 
-      if (state.roomCode && state.playerId) {
+      if (state.roomCode) {
         const code = sanitizeRoomCode(state.roomCode);
         if (code) {
           try {
@@ -2047,4 +2025,4 @@
     renderAuthReadyState();
   </script>
 </body>
-  </html>
+</html>

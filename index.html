@@ -737,6 +737,21 @@
       return room.players.findIndex((p) => !p.left && !p.folded && !p.broke && !p.allIn);
     }
 
+    function findNextActableFromIndex(room, startIndex, includeSelf = false) {
+      if (room.players.length === 0) return -1;
+
+      const total = room.players.length;
+      const begin = includeSelf ? 0 : 1;
+
+      for (let step = begin; step < total + begin; step++) {
+        const idx = (startIndex + step + total) % total;
+        const p = room.players[idx];
+        if (!p.left && !p.folded && !p.broke && !p.allIn) return idx;
+      }
+
+      return -1;
+    }
+
     function getDealerPlayer(room) {
       return room.players.find((p) => p.id === room.dealerPlayerId && !p.left) || null;
     }
@@ -750,6 +765,12 @@
       if (currentIndex === -1) return players[0].id;
 
       return players[(currentIndex + 1) % players.length].id;
+    }
+
+    function findFirstTurnFromDealer(room) {
+      const dealerIndex = room.players.findIndex((p) => p.id === room.dealerPlayerId);
+      if (dealerIndex === -1) return findFirstActableIndex(room);
+      return findNextActableFromIndex(room, dealerIndex, true);
     }
 
     function resetOtherPlayersActed(room, actorId) {
@@ -870,7 +891,8 @@
         syncPlayerChips(p);
       });
 
-      room.turnIndex = findFirstActableIndex(room);
+      room.turnIndex = findFirstTurnFromDealer(room);
+
       const dealer = getDealerPlayer(room);
       room.lastActionText =
         openingText ||
@@ -940,7 +962,7 @@
         }
       });
 
-      room.turnIndex = findFirstActableIndex(room);
+      room.turnIndex = findFirstTurnFromDealer(room);
       room.lastActionText = `${STREET_NAMES[room.currentStreet]} 라운드가 시작되었습니다.`;
     }
 
@@ -1194,10 +1216,7 @@
             <div class="pill">테이블 ${formatMoney(player.betAmount)}</div>
             <div class="pill">누적 ${formatMoney(player.committedAmount)}</div>
           </div>
-          <div class="mini">스택 칩</div>
         `;
-
-        card.appendChild(renderChipStacks(player.stackChips));
 
         const betTitle = document.createElement("div");
         betTitle.className = "mini";
@@ -1949,4 +1968,4 @@
     renderAuthReadyState();
   </script>
 </body>
-  </html>
+</html>

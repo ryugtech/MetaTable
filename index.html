@@ -1,0 +1,1952 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>포커 룸</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E" />
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      background: #0b1220;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      overflow-x: hidden;
+    }
+    .app {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 16px 16px 120px;
+    }
+    .card {
+      background: #111827;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .hidden { display: none !important; }
+    .title { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
+    .subtitle { font-size: 14px; color: #94a3b8; margin-bottom: 12px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .col { display: flex; flex-direction: column; gap: 8px; }
+    .grow { flex: 1; min-width: 0; }
+
+    input, button, select {
+      border: none;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 15px;
+    }
+    input, select {
+      width: 100%;
+      background: #0f172a;
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    button {
+      cursor: pointer;
+      background: #334155;
+      color: #fff;
+      font-weight: 700;
+    }
+    button.primary { background: #2563eb; }
+    button.green { background: #16a34a; }
+    button.orange { background: #d97706; }
+    button.red { background: #dc2626; }
+    button.gray { background: #475569; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .notice {
+      min-height: 18px;
+      font-size: 13px;
+      color: #fca5a5;
+      margin-top: 8px;
+      white-space: pre-wrap;
+    }
+    .ok { color: #86efac; }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #0f172a;
+      border: 1px solid rgba(255,255,255,0.08);
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .action-pill {
+      background: #1d4ed8;
+      color: white;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .left-pill {
+      background: #6b7280;
+      color: white;
+    }
+    .broke-pill {
+      background: #dc2626;
+      color: white;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 10px;
+    }
+    .stat {
+      background: #0f172a;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    .stat-label {
+      color: #94a3b8;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+    .stat-value {
+      font-size: 20px;
+      font-weight: 900;
+    }
+
+    .share {
+      background: #0f172a;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 12px;
+      color: #cbd5e1;
+      word-break: break-all;
+      flex: 1;
+    }
+
+    .list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .order-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      background: #0f172a;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .players {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 12px;
+    }
+    .player-card {
+      background: #0f172a;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 14px;
+    }
+    .player-card.turn {
+      outline: 2px solid #60a5fa;
+      box-shadow: 0 0 0 4px rgba(96,165,250,0.12);
+    }
+    .player-card.me {
+      border-color: rgba(34,197,94,0.5);
+    }
+    .player-name { font-size: 18px; font-weight: 800; }
+    .mini { font-size: 12px; color: #94a3b8; }
+
+    .amount-tags {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      margin-bottom: 10px;
+    }
+
+    .stack-view {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      min-height: 72px;
+      margin-top: 8px;
+    }
+    .chip-stack {
+      min-width: 44px;
+      text-align: center;
+    }
+    .discs {
+      height: 50px;
+      display: flex;
+      flex-direction: column-reverse;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .disc {
+      width: 34px;
+      height: 11px;
+      border-radius: 999px;
+      border: 2px solid rgba(255,255,255,0.95);
+      margin-top: -4px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+    }
+    .red-chip { background: #ef4444; }
+    .blue-chip { background: #3b82f6; }
+    .green-chip { background: #22c55e; }
+    .black-chip { background: #111827; }
+    .gold-chip { background: #eab308; }
+
+    .sidepot-box, .recharge-box {
+      background: #0f172a;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    .sidepot-title, .recharge-title {
+      font-size: 16px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .winner-list, .recharge-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .winner-row, .recharge-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 12px;
+      background: #0f172a;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .winner-row.selected, .recharge-row.selected {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 2px rgba(96,165,250,0.18) inset;
+    }
+    .check-ui {
+      width: 22px;
+      height: 22px;
+      border-radius: 7px;
+      border: 2px solid #64748b;
+      background: #111827;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .winner-row.selected .check-ui,
+    .recharge-row.selected .check-ui {
+      background: #2563eb;
+      border-color: #2563eb;
+    }
+    .check-ui::after {
+      content: "";
+      width: 6px;
+      height: 10px;
+      border-right: 2px solid white;
+      border-bottom: 2px solid white;
+      transform: rotate(45deg) scale(0);
+      transition: 0.15s;
+      margin-top: -1px;
+    }
+    .winner-row.selected .check-ui::after,
+    .recharge-row.selected .check-ui::after {
+      transform: rotate(45deg) scale(1);
+    }
+
+    .backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      opacity: 0;
+      pointer-events: none;
+      transition: 0.25s;
+      z-index: 50;
+    }
+    .backdrop.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .bottom-sheet {
+      position: fixed;
+      left: 50%;
+      bottom: 0;
+      transform: translate(-50%, calc(100% - 74px));
+      width: 100%;
+      max-width: 1000px;
+      height: 74vh;
+      background: #f0f0f0;
+      color: #0f172a;
+      border-radius: 24px 24px 0 0;
+      transition: transform 0.28s ease;
+      z-index: 60;
+      box-shadow: 0 -10px 30px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .bottom-sheet.open {
+      transform: translate(-50%, 0);
+    }
+    .sheet-handle-area {
+      height: 74px;
+      padding-top: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      background: #f0f0f0;
+    }
+    .sheet-handle {
+      width: 54px;
+      height: 6px;
+      border-radius: 999px;
+      background: #cbd5e1;
+      margin-bottom: 10px;
+    }
+    .sheet-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .sheet-subtitle {
+      font-size: 13px;
+      color: #475569;
+      margin-top: 4px;
+    }
+    .sheet-content {
+      height: calc(100% - 74px);
+      overflow-y: auto;
+      padding: 0 16px 24px;
+      background: #f0f0f0;
+    }
+    .sheet-actions-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 10px;
+    }
+
+    .result-overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.55);
+      z-index: 80;
+      padding: 20px;
+    }
+    .result-overlay.show {
+      display: flex;
+    }
+    .result-panel {
+      width: 100%;
+      max-width: 460px;
+      background: #111827;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 24px;
+      padding: 24px;
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+    }
+    .result-title {
+      font-size: 22px;
+      font-weight: 900;
+      margin-bottom: 10px;
+    }
+    .result-text {
+      font-size: 16px;
+      line-height: 1.5;
+      color: #e5e7eb;
+      margin-bottom: 18px;
+      white-space: pre-wrap;
+    }
+
+    @media (max-width: 820px) {
+      .players { grid-template-columns: 1fr; }
+      .sheet-actions-grid { grid-template-columns: 1fr; }
+      .bottom-sheet { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div id="authView" class="card">
+      <div class="title">포커 룸</div>
+      <div class="subtitle">GitHub Pages + Firebase Realtime Database 실시간 동기화 버전</div>
+
+      <div class="col">
+        <input id="playerNameInput" type="text" maxlength="16" placeholder="내 이름" />
+        <div class="row">
+          <button id="createRoomBtn" class="primary grow">방 만들기</button>
+        </div>
+        <div class="row">
+          <input id="roomCodeInput" class="grow" type="text" maxlength="6" placeholder="방 코드" />
+          <button id="joinRoomBtn" class="green">참가</button>
+        </div>
+        <div id="authMessage" class="notice"></div>
+      </div>
+    </div>
+
+    <div id="roomView" class="hidden">
+      <div class="card">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+          <div>
+            <div class="title" style="margin:0;">방 코드 <span id="roomCodeText"></span></div>
+            <div class="subtitle" style="margin:0;">
+              상태: <span id="roomStatusText"></span>
+              · 딜러: <span id="dealerNameText"></span>
+            </div>
+          </div>
+          <div class="row">
+            <div id="myRolePill" class="pill">플레이어</div>
+            <button id="leaveRoomBtn" class="red">나가기</button>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:12px;">
+          <div id="shareLink" class="share"></div>
+          <button id="copyLinkBtn" class="gray">링크 복사</button>
+        </div>
+
+        <div id="lastActionBox" class="notice" style="color:#cbd5e1;"></div>
+      </div>
+
+      <div id="gameTopPanel" class="card hidden">
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-label">팟</div>
+            <div class="stat-value" id="potText">₩0</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">현재 라운드</div>
+            <div class="stat-value" id="streetText">-</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="waitingPanel" class="card hidden">
+        <div class="title" style="font-size:20px;">대기방</div>
+        <div class="subtitle">호스트가 초기 금액과 순서를 정한 뒤 시작합니다.</div>
+
+        <div id="hostWaitingControls" class="hidden">
+          <div class="row" style="margin-bottom:12px;">
+            <input id="initialAmountInput" class="grow" type="number" min="10" step="10" placeholder="초기 금액 예: 5000" />
+            <button id="applyInitialAmountBtn" class="primary">적용</button>
+          </div>
+          <div class="row">
+            <button id="startGameBtn" class="green grow">게임 시작</button>
+          </div>
+        </div>
+
+        <div class="title" style="font-size:18px;">참가자 / 순서</div>
+        <div id="waitingList" class="list"></div>
+        <div id="waitingMessage" class="notice"></div>
+      </div>
+
+      <div id="gamePanel" class="hidden">
+        <div class="card">
+          <div class="title" style="font-size:20px;">플레이어 상태</div>
+          <div class="subtitle">현재 테이블 칩과 금액을 확인할 수 있습니다.</div>
+          <div id="playersList" class="players"></div>
+        </div>
+
+        <div id="hostSettlePanel" class="card hidden">
+          <div class="title" style="font-size:20px;">딜러 패널</div>
+          <div class="subtitle">정산이 필요하면 사이드팟 승자를 선택하고, 끝난 후 새 판 시작 또는 Broke 유저 충전을 할 수 있습니다.</div>
+
+          <div id="sidePotContainer"></div>
+
+          <div class="row" style="margin-top:12px;">
+            <button id="settlePotBtn" class="green grow">사이드팟 정산</button>
+            <button id="startNextHandBtn" class="primary grow">새 판 시작</button>
+          </div>
+
+          <div id="rechargeBox" class="recharge-box hidden">
+            <div class="recharge-title">칩 충전</div>
+            <div class="mini">선택한 Broke 유저를 초기 금액의 10분의 1로 복귀시킵니다.</div>
+            <div id="rechargeList" class="recharge-list"></div>
+            <div class="row" style="margin-top:12px;">
+              <button id="rechargeBtn" class="orange grow">충전</button>
+            </div>
+          </div>
+
+          <div id="hostSettleMessage" class="notice"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="sheetBackdrop" class="backdrop"></div>
+
+  <div id="actionSheet" class="bottom-sheet hidden">
+    <div id="sheetHandleArea" class="sheet-handle-area">
+      <div class="sheet-handle"></div>
+      <div class="sheet-title">내 턴 액션</div>
+      <div id="sheetSubtitle" class="sheet-subtitle">터치해서 열기</div>
+    </div>
+
+    <div class="sheet-content">
+      <div id="myStatusPills" class="row" style="margin-bottom:12px;"></div>
+
+      <div class="row" style="margin-bottom:12px;">
+        <input id="targetBetInput" class="grow" type="number" min="10" step="10" placeholder="Bet / Raise 후 내 총 베팅 금액" />
+        <button id="betRaiseBtn" class="orange">Bet / Raise 완료</button>
+      </div>
+
+      <div class="sheet-actions-grid">
+        <button id="checkCallBtn" class="primary">Check / Call</button>
+        <button id="allInBtn" class="orange">All-in</button>
+        <button id="foldBtn" class="red">Fold</button>
+        <button id="closeSheetBtn" class="gray">닫기</button>
+      </div>
+
+      <div id="myActionMessage" class="notice"></div>
+    </div>
+  </div>
+
+  <div id="resultOverlay" class="result-overlay">
+    <div class="result-panel">
+      <div class="result-title">종료</div>
+      <div id="resultText" class="result-text"></div>
+      <button id="resultCloseBtn" class="primary">확인</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import {
+      getAuth,
+      signInAnonymously,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import {
+      getDatabase,
+      ref,
+      get,
+      set,
+      onValue,
+      runTransaction
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCPDZ_3kIKIB28So9CGMMnZxvQ8FEEQfZ0",
+      authDomain: "metatable.firebaseapp.com",
+      databaseURL: "https://metatable-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "metatable",
+      storageBucket: "metatable.firebasestorage.app",
+      messagingSenderId: "714757640435",
+      appId: "1:714757640435:web:d0e7c19f7136bf7727a786",
+      measurementId: "G-3JJY3JH6TN"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getDatabase(app);
+
+    const MIN_UNIT = 10;
+    const MAX_PLAYERS = 4;
+    const STREET_NAMES = ["프리플랍", "플랍", "턴", "리버"];
+    const CHIP_META = [
+      { key: "10", value: 10, className: "red-chip" },
+      { key: "50", value: 50, className: "blue-chip" },
+      { key: "100", value: 100, className: "green-chip" },
+      { key: "500", value: 500, className: "black-chip" },
+      { key: "1000", value: 1000, className: "gold-chip" }
+    ];
+
+    const state = {
+      authReady: false,
+      roomCode: "",
+      playerId: "",
+      playerName: "",
+      room: null,
+      roomUnsub: null,
+      selectedWinnersByPot: {},
+      selectedRechargePlayerId: "",
+      isSheetOpen: false,
+      lastSeenResultMessage: "",
+      _lastPotSig: ""
+    };
+
+    const authView = document.getElementById("authView");
+    const roomView = document.getElementById("roomView");
+    const playerNameInput = document.getElementById("playerNameInput");
+    const roomCodeInput = document.getElementById("roomCodeInput");
+    const createRoomBtn = document.getElementById("createRoomBtn");
+    const joinRoomBtn = document.getElementById("joinRoomBtn");
+    const authMessage = document.getElementById("authMessage");
+    const roomCodeText = document.getElementById("roomCodeText");
+    const roomStatusText = document.getElementById("roomStatusText");
+    const dealerNameText = document.getElementById("dealerNameText");
+    const myRolePill = document.getElementById("myRolePill");
+    const shareLink = document.getElementById("shareLink");
+    const copyLinkBtn = document.getElementById("copyLinkBtn");
+    const leaveRoomBtn = document.getElementById("leaveRoomBtn");
+    const lastActionBox = document.getElementById("lastActionBox");
+    const gameTopPanel = document.getElementById("gameTopPanel");
+    const potText = document.getElementById("potText");
+    const streetText = document.getElementById("streetText");
+    const waitingPanel = document.getElementById("waitingPanel");
+    const hostWaitingControls = document.getElementById("hostWaitingControls");
+    const initialAmountInput = document.getElementById("initialAmountInput");
+    const applyInitialAmountBtn = document.getElementById("applyInitialAmountBtn");
+    const startGameBtn = document.getElementById("startGameBtn");
+    const waitingList = document.getElementById("waitingList");
+    const waitingMessage = document.getElementById("waitingMessage");
+    const gamePanel = document.getElementById("gamePanel");
+    const playersList = document.getElementById("playersList");
+    const hostSettlePanel = document.getElementById("hostSettlePanel");
+    const sidePotContainer = document.getElementById("sidePotContainer");
+    const settlePotBtn = document.getElementById("settlePotBtn");
+    const startNextHandBtn = document.getElementById("startNextHandBtn");
+    const rechargeBox = document.getElementById("rechargeBox");
+    const rechargeList = document.getElementById("rechargeList");
+    const rechargeBtn = document.getElementById("rechargeBtn");
+    const hostSettleMessage = document.getElementById("hostSettleMessage");
+    const actionSheet = document.getElementById("actionSheet");
+    const sheetBackdrop = document.getElementById("sheetBackdrop");
+    const sheetHandleArea = document.getElementById("sheetHandleArea");
+    const sheetSubtitle = document.getElementById("sheetSubtitle");
+    const closeSheetBtn = document.getElementById("closeSheetBtn");
+    const myStatusPills = document.getElementById("myStatusPills");
+    const targetBetInput = document.getElementById("targetBetInput");
+    const betRaiseBtn = document.getElementById("betRaiseBtn");
+    const checkCallBtn = document.getElementById("checkCallBtn");
+    const allInBtn = document.getElementById("allInBtn");
+    const foldBtn = document.getElementById("foldBtn");
+    const myActionMessage = document.getElementById("myActionMessage");
+    const resultOverlay = document.getElementById("resultOverlay");
+    const resultText = document.getElementById("resultText");
+    const resultCloseBtn = document.getElementById("resultCloseBtn");
+
+    function setMessage(element, message = "", isOk = false) {
+      if (!element) return;
+      element.textContent = message || "";
+      element.classList.toggle("ok", !!message && isOk);
+    }
+
+    function formatMoney(value) {
+      const amount = Math.max(0, Math.floor(Number(value) || 0));
+      return `₩${amount.toLocaleString("ko-KR")}`;
+    }
+
+    function sanitizeRoomCode(value = "") {
+      return String(value).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+    }
+
+    function normalizeName(value = "") {
+      return String(value).trim().slice(0, 16);
+    }
+
+    function createId() {
+      return auth.currentUser?.uid || crypto.randomUUID().replace(/-/g, "").slice(0, 28);
+    }
+
+    function emptyChips() {
+      return { "10": 0, "50": 0, "100": 0, "500": 0, "1000": 0 };
+    }
+
+    function amountToChips(amountRaw) {
+      const values = [1000, 500, 100, 50, 10];
+      let remaining = Math.max(0, Math.floor(Number(amountRaw) || 0));
+      const result = emptyChips();
+
+      for (const value of values) {
+        const key = String(value);
+        const count = Math.floor(remaining / value);
+        result[key] = count;
+        remaining -= count * value;
+      }
+      return result;
+    }
+
+    function validateMoney(valueRaw) {
+      const value = Math.floor(Number(valueRaw) || 0);
+      if (value <= 0 || value % MIN_UNIT !== 0) {
+        throw new Error("금액은 10 단위의 0보다 큰 숫자여야 합니다.");
+      }
+      return value;
+    }
+
+    function syncPlayerChips(player) {
+      player.stackChips = amountToChips(player.stackAmount);
+      player.betChips = amountToChips(player.betAmount);
+    }
+
+    function clearRecentActions(room) {
+      room.players.forEach((p) => { p.recentAction = ""; });
+    }
+
+    function setRecentAction(room, playerId, text) {
+      clearRecentActions(room);
+      const target = room.players.find((p) => p.id === playerId);
+      if (target) target.recentAction = text;
+    }
+
+    function effectiveCommitted(player) {
+      return Number(player.committedAmount || 0) + Number(player.betAmount || 0);
+    }
+
+    function updateBrokeFlags(room) {
+      room.players.forEach((p) => {
+        p.broke = !p.left && p.stackAmount <= 0;
+      });
+    }
+
+    function livingPlayers(room) {
+      return room.players.filter((p) => !p.left);
+    }
+
+    function playablePlayers(room) {
+      return room.players.filter((p) => !p.left && !p.broke);
+    }
+
+    function activePlayers(room) {
+      return room.players.filter((p) => !p.left && !p.folded && !p.broke);
+    }
+
+    function actablePlayers(room) {
+      return room.players.filter((p) => !p.left && !p.folded && !p.broke && !p.allIn);
+    }
+
+    function findNextTurnIndex(room, fromIndex) {
+      if (room.players.length === 0) return -1;
+      for (let i = 1; i <= room.players.length; i++) {
+        const idx = (fromIndex + i) % room.players.length;
+        const p = room.players[idx];
+        if (!p.left && !p.folded && !p.broke && !p.allIn) return idx;
+      }
+      return -1;
+    }
+
+    function findFirstActableIndex(room) {
+      return room.players.findIndex((p) => !p.left && !p.folded && !p.broke && !p.allIn);
+    }
+
+    function getDealerPlayer(room) {
+      return room.players.find((p) => p.id === room.dealerPlayerId && !p.left) || null;
+    }
+
+    function findNextDealerPlayerId(room) {
+      const players = room.players.filter((p) => !p.left && !p.broke);
+      if (players.length === 0) return "";
+      if (players.length === 1) return players[0].id;
+
+      const currentIndex = players.findIndex((p) => p.id === room.dealerPlayerId);
+      if (currentIndex === -1) return players[0].id;
+
+      return players[(currentIndex + 1) % players.length].id;
+    }
+
+    function resetOtherPlayersActed(room, actorId) {
+      room.players.forEach((p) => {
+        if (p.id !== actorId && !p.left && !p.folded && !p.broke && !p.allIn) {
+          p.hasActedThisStreet = false;
+        }
+      });
+    }
+
+    function collectStreetBetsToCommitted(room) {
+      room.players.forEach((p) => {
+        const bet = Number(p.betAmount || 0);
+        if (bet > 0) {
+          p.committedAmount = Number(p.committedAmount || 0) + bet;
+          p.betAmount = 0;
+          syncPlayerChips(p);
+        }
+      });
+      room.potAmount = room.players.reduce((sum, p) => sum + Number(p.committedAmount || 0), 0);
+      room.currentBet = 0;
+    }
+
+    function computeSidePots(room) {
+      const contributions = room.players
+        .map((p) => ({
+          playerId: p.id,
+          name: p.name,
+          amount: effectiveCommitted(p),
+          folded: !!p.folded,
+          left: !!p.left
+        }))
+        .filter((x) => x.amount > 0);
+
+      if (contributions.length === 0) return [];
+
+      const levels = [...new Set(contributions.map((c) => c.amount))].sort((a, b) => a - b);
+      const pots = [];
+      let prev = 0;
+
+      levels.forEach((level, index) => {
+        const contributors = contributions.filter((c) => c.amount >= level);
+        const eligible = contributors.filter((c) => !c.folded && !c.left);
+        const slice = level - prev;
+        const amount = slice * contributors.length;
+
+        if (amount > 0) {
+          pots.push({
+            index,
+            amount,
+            eligiblePlayerIds: eligible.map((e) => e.playerId),
+            eligiblePlayers: eligible.map((e) => ({ id: e.playerId, name: e.name }))
+          });
+        }
+        prev = level;
+      });
+
+      return pots;
+    }
+
+    function setResult(room, reason, message) {
+      room.handPhase = "settled";
+      room.settlementReason = reason;
+      room.turnIndex = -1;
+      room.resultMessage = message;
+      room.resultOpen = true;
+      room.lastActionText = message;
+    }
+
+    function maybeChampionWin(room) {
+      updateBrokeFlags(room);
+      const alive = livingPlayers(room);
+      const rich = alive.filter((p) => p.stackAmount > 0);
+
+      if (alive.length >= 2 && rich.length === 1) {
+        room.status = "waiting";
+        setResult(room, "champion", `WINS ${rich[0].name}`);
+        return true;
+      }
+      return false;
+    }
+
+    function setupNewHand(room, openingText = "") {
+      room.players = room.players.filter((p) => !p.left);
+      updateBrokeFlags(room);
+
+      if (playablePlayers(room).length < 2) {
+        room.status = "waiting";
+        room.handPhase = "settled";
+        room.settlementReason = "";
+        room.resultMessage = "";
+        room.resultOpen = false;
+        room.lastActionText = openingText || "플레이어가 부족합니다.";
+        room.currentStreet = 0;
+        room.currentBet = 0;
+        room.turnIndex = -1;
+        room.potAmount = 0;
+        return;
+      }
+
+      room.status = "playing";
+      room.handPhase = "betting";
+      room.settlementReason = "";
+      room.resultMessage = "";
+      room.resultOpen = false;
+      room.currentStreet = 0;
+      room.currentBet = 0;
+      room.potAmount = 0;
+
+      room.players.forEach((p) => {
+        p.betAmount = 0;
+        p.committedAmount = 0;
+        p.folded = false;
+        p.allIn = false;
+        p.hasActedThisStreet = false;
+        p.recentAction = "";
+        p.broke = p.stackAmount <= 0;
+        syncPlayerChips(p);
+      });
+
+      room.turnIndex = findFirstActableIndex(room);
+      const dealer = getDealerPlayer(room);
+      room.lastActionText =
+        openingText ||
+        `${STREET_NAMES[0]} 베팅 라운드가 시작되었습니다. 딜러는 ${dealer?.name || "없음"} 입니다.`;
+    }
+
+    function markSettlement(room, reason, text) {
+      collectStreetBetsToCommitted(room);
+      room.handPhase = "settlement";
+      room.settlementReason = reason;
+      room.turnIndex = -1;
+      room.lastActionText = text;
+    }
+
+    function ensureTurnPlayer(room, playerId) {
+      if (room.status !== "playing") throw new Error("게임 중이 아닙니다.");
+      if (room.handPhase !== "betting") throw new Error("지금은 액션할 수 없는 상태입니다.");
+
+      const current = room.players[room.turnIndex];
+      if (!current || current.id !== playerId) throw new Error("지금은 본인 턴이 아닙니다.");
+      if (current.folded) throw new Error("폴드한 플레이어입니다.");
+      if (current.allIn) throw new Error("올인 상태입니다.");
+      if (current.broke) throw new Error("파산 상태입니다.");
+      if (current.left) throw new Error("이미 나간 플레이어입니다.");
+
+      return current;
+    }
+
+    function autoAwardFoldWin(room) {
+      const alive = activePlayers(room);
+      if (alive.length !== 1) return false;
+
+      const winner = alive[0];
+      const total = room.players.reduce((sum, p) => sum + effectiveCommitted(p), 0);
+      winner.stackAmount += total;
+
+      room.players.forEach((p) => {
+        p.betAmount = 0;
+        p.committedAmount = 0;
+        p.folded = false;
+        p.allIn = false;
+        p.hasActedThisStreet = false;
+        p.recentAction = "";
+        syncPlayerChips(p);
+      });
+
+      room.potAmount = 0;
+      room.currentBet = 0;
+      room.currentStreet = 0;
+      setResult(room, "fold_win", `${winner.name} 님이 폴드 승리로 팟을 가져갔습니다.`);
+      return true;
+    }
+
+    function nextStreetOrSettlement(room) {
+      collectStreetBetsToCommitted(room);
+
+      if (room.currentStreet >= STREET_NAMES.length - 1) {
+        markSettlement(room, "showdown", "리버가 끝났습니다. 승자를 선택해 정산하세요.");
+        return;
+      }
+
+      room.currentStreet += 1;
+      room.handPhase = "betting";
+      room.players.forEach((p) => {
+        if (!p.left && !p.folded && !p.broke && !p.allIn) {
+          p.hasActedThisStreet = false;
+        }
+      });
+
+      room.turnIndex = findFirstActableIndex(room);
+      room.lastActionText = `${STREET_NAMES[room.currentStreet]} 라운드가 시작되었습니다.`;
+    }
+
+    function shouldMoveToNextStreet(room) {
+      const actors = actablePlayers(room);
+      if (actors.length === 0) return true;
+
+      return actors.every((p) => p.hasActedThisStreet && Number(p.betAmount || 0) === Number(room.currentBet || 0));
+    }
+
+    function evaluateGameFlowAfterAction(room, actorIndex) {
+      if (autoAwardFoldWin(room)) return;
+
+      const active = activePlayers(room);
+      if (active.length <= 1) {
+        if (autoAwardFoldWin(room)) return;
+      }
+
+      const actables = actablePlayers(room);
+      if (actables.length === 0) {
+        markSettlement(room, "all_in_showdown", "액션 가능한 플레이어가 없습니다. 승자를 선택해 정산하세요.");
+        return;
+      }
+
+      if (shouldMoveToNextStreet(room)) {
+        nextStreetOrSettlement(room);
+        return;
+      }
+
+      room.turnIndex = findNextTurnIndex(room, actorIndex);
+    }
+
+    function roomPath(code) {
+      return ref(db, `rooms/${code}`);
+    }
+
+    async function mutateRoom(code, updater) {
+      const targetRef = roomPath(code);
+      const result = await runTransaction(targetRef, (room) => {
+        if (room === null) return room;
+        const updated = updater(structuredClone(room));
+        if (updated === null) return null;
+        updated.updatedAt = Date.now();
+        return updated;
+      });
+
+      if (!result.committed) {
+        throw new Error("동시에 수정되어 다시 시도해주세요.");
+      }
+      return result.snapshot.val();
+    }
+
+    function generateRoomCode() {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let out = "";
+      for (let i = 0; i < 6; i++) {
+        out += chars[Math.floor(Math.random() * chars.length)];
+      }
+      return out;
+    }
+
+    function saveSession(roomCode, playerName) {
+      localStorage.setItem("poker_room_code", roomCode);
+      localStorage.setItem("poker_player_name", playerName);
+      state.roomCode = roomCode;
+      state.playerName = playerName;
+    }
+
+    function clearSession() {
+      localStorage.removeItem("poker_room_code");
+      localStorage.removeItem("poker_player_name");
+      state.roomCode = "";
+      state.playerName = "";
+    }
+
+    function initSession() {
+      state.roomCode = sanitizeRoomCode(localStorage.getItem("poker_room_code") || "");
+      state.playerName = normalizeName(localStorage.getItem("poker_player_name") || "");
+      if (state.playerName) playerNameInput.value = state.playerName;
+      if (state.roomCode) roomCodeInput.value = state.roomCode;
+    }
+
+    function initQueryRoom() {
+      const params = new URLSearchParams(location.search);
+      const room = sanitizeRoomCode(params.get("room") || "");
+      if (room) {
+        roomCodeInput.value = room;
+      }
+    }
+
+    function setRoomQuery(roomCode) {
+      const url = new URL(location.href);
+      url.searchParams.set("room", roomCode);
+      history.replaceState({}, "", url);
+    }
+
+    function clearRoomQuery() {
+      const url = new URL(location.href);
+      url.searchParams.delete("room");
+      history.replaceState({}, "", url);
+    }
+
+    function renderAuthReadyState() {
+      createRoomBtn.disabled = !state.authReady;
+      joinRoomBtn.disabled = !state.authReady;
+      if (!state.authReady) {
+        setMessage(authMessage, "Firebase 익명 로그인 중입니다...");
+      } else {
+        setMessage(authMessage, "");
+      }
+    }
+
+    function leaveRoomLocalOnly() {
+      if (state.roomUnsub) {
+        state.roomUnsub();
+        state.roomUnsub = null;
+      }
+      state.room = null;
+      state.selectedWinnersByPot = {};
+      state.selectedRechargePlayerId = "";
+      state.lastSeenResultMessage = "";
+      authView.classList.remove("hidden");
+      roomView.classList.add("hidden");
+      closeSheet(true);
+      hideResultOverlay();
+      clearSession();
+      clearRoomQuery();
+    }
+
+    function subscribeRoom(code) {
+      if (state.roomUnsub) state.roomUnsub();
+      state.roomCode = code;
+      setRoomQuery(code);
+
+      const targetRef = roomPath(code);
+      state.roomUnsub = onValue(targetRef, (snap) => {
+        const room = snap.val();
+        if (!room) {
+          leaveRoomLocalOnly();
+          setMessage(authMessage, "방이 종료되었거나 존재하지 않습니다.");
+          return;
+        }
+
+        const me = room.players?.find((p) => p.id === state.playerId && !p.left);
+        if (!me) {
+          leaveRoomLocalOnly();
+          setMessage(authMessage, "방에서 나갔습니다.");
+          return;
+        }
+
+        state.room = room;
+        state.playerName = me.name;
+        saveSession(code, me.name);
+        renderRoom();
+      });
+    }
+
+    function createWaitingOrderItem(player, index, isHost) {
+      const item = document.createElement("div");
+      item.className = "order-item";
+
+      const left = document.createElement("div");
+      left.innerHTML = `
+        <div style="font-weight:800;">${index + 1}. ${player.name}</div>
+        <div class="mini">${formatMoney(player.stackAmount)}${player.broke ? " · Broke" : ""}${player.left ? " · 나감" : ""}</div>
+      `;
+
+      const right = document.createElement("div");
+      right.className = "row";
+
+      if (isHost && !player.left) {
+        const upBtn = document.createElement("button");
+        upBtn.textContent = "▲";
+        upBtn.className = "gray";
+        upBtn.disabled = index === 0;
+        upBtn.onclick = () => reorderPlayer(player.id, -1);
+
+        const downBtn = document.createElement("button");
+        downBtn.textContent = "▼";
+        downBtn.className = "gray";
+        downBtn.disabled = index === state.room.players.length - 1;
+        downBtn.onclick = () => reorderPlayer(player.id, 1);
+
+        right.appendChild(upBtn);
+        right.appendChild(downBtn);
+      }
+
+      item.appendChild(left);
+      item.appendChild(right);
+      return item;
+    }
+
+    function renderChipStacks(chips) {
+      const wrap = document.createElement("div");
+      wrap.className = "stack-view";
+
+      CHIP_META.forEach((meta) => {
+        const count = Number(chips?.[meta.key] || 0);
+        if (count <= 0) return;
+
+        const stack = document.createElement("div");
+        stack.className = "chip-stack";
+
+        const discs = document.createElement("div");
+        discs.className = "discs";
+
+        const visibleCount = Math.min(count, 6);
+        for (let i = 0; i < visibleCount; i++) {
+          const disc = document.createElement("div");
+          disc.className = `disc ${meta.className}`;
+          discs.appendChild(disc);
+        }
+
+        const label = document.createElement("div");
+        label.className = "mini";
+        label.textContent = `${meta.value} × ${count}`;
+
+        stack.appendChild(discs);
+        stack.appendChild(label);
+        wrap.appendChild(stack);
+      });
+
+      return wrap;
+    }
+
+    function renderPlayers(room, me) {
+      playersList.innerHTML = "";
+
+      room.players.forEach((player, index) => {
+        if (player.left) return;
+
+        const card = document.createElement("div");
+        card.className = "player-card";
+        if (index === room.turnIndex && room.handPhase === "betting") card.classList.add("turn");
+        if (player.id === me.id) card.classList.add("me");
+
+        const dealerBadge = room.dealerPlayerId === player.id ? " · 딜러" : "";
+        const recentAction = player.recentAction ? ` · ${player.recentAction}` : "";
+
+        card.innerHTML = `
+          <div class="player-name">${player.name}${dealerBadge}</div>
+          <div class="mini">
+            ${player.id === me.id ? "나" : "상대"}
+            ${player.folded ? " · Fold" : ""}
+            ${player.allIn ? " · All-in" : ""}
+            ${player.broke ? " · Broke" : ""}
+            ${recentAction}
+          </div>
+          <div class="amount-tags">
+            <div class="pill">스택 ${formatMoney(player.stackAmount)}</div>
+            <div class="pill">테이블 ${formatMoney(player.betAmount)}</div>
+            <div class="pill">누적 ${formatMoney(player.committedAmount)}</div>
+          </div>
+          <div class="mini">스택 칩</div>
+        `;
+
+        card.appendChild(renderChipStacks(player.stackChips));
+
+        const betTitle = document.createElement("div");
+        betTitle.className = "mini";
+        betTitle.style.marginTop = "10px";
+        betTitle.textContent = "테이블 칩";
+        card.appendChild(betTitle);
+        card.appendChild(renderChipStacks(player.betChips));
+
+        playersList.appendChild(card);
+      });
+    }
+
+    function renderSidePots(room) {
+      sidePotContainer.innerHTML = "";
+      const sidePots = computeSidePots(room);
+      const sig = JSON.stringify(sidePots.map((p) => ({
+        index: p.index,
+        amount: p.amount,
+        eligiblePlayerIds: p.eligiblePlayerIds
+      })));
+
+      if (state._lastPotSig !== sig) {
+        state.selectedWinnersByPot = {};
+        state._lastPotSig = sig;
+      }
+
+      if (room.handPhase !== "settlement" || sidePots.length === 0) {
+        const box = document.createElement("div");
+        box.className = "sidepot-box";
+        box.innerHTML = `<div class="mini">현재 정산할 사이드팟이 없습니다.</div>`;
+        sidePotContainer.appendChild(box);
+        return;
+      }
+
+      sidePots.forEach((pot) => {
+        const box = document.createElement("div");
+        box.className = "sidepot-box";
+
+        const title = document.createElement("div");
+        title.className = "sidepot-title";
+        title.textContent = `${pot.index + 1}번 팟 · ${formatMoney(pot.amount)}`;
+
+        const mini = document.createElement("div");
+        mini.className = "mini";
+        mini.textContent = `승자 선택: ${pot.eligiblePlayers.map((p) => p.name).join(", ")}`;
+
+        const list = document.createElement("div");
+        list.className = "winner-list";
+
+        const selected = state.selectedWinnersByPot[pot.index] || [];
+
+        pot.eligiblePlayers.forEach((player) => {
+          const row = document.createElement("div");
+          row.className = `winner-row ${selected.includes(player.id) ? "selected" : ""}`;
+          row.innerHTML = `
+            <div class="check-ui"></div>
+            <div>
+              <div style="font-weight:800;">${player.name}</div>
+              <div class="mini">탭해서 승자로 선택 / 해제</div>
+            </div>
+          `;
+          row.onclick = () => {
+            const current = state.selectedWinnersByPot[pot.index] || [];
+            const exists = current.includes(player.id);
+            state.selectedWinnersByPot[pot.index] = exists
+              ? current.filter((id) => id !== player.id)
+              : [...current, player.id];
+            renderRoom();
+          };
+          list.appendChild(row);
+        });
+
+        box.appendChild(title);
+        box.appendChild(mini);
+        box.appendChild(list);
+        sidePotContainer.appendChild(box);
+      });
+    }
+
+    function renderRecharge(room) {
+      const brokePlayers = room.players.filter((p) => !p.left && p.broke);
+      rechargeBox.classList.toggle("hidden", brokePlayers.length === 0);
+
+      rechargeList.innerHTML = "";
+      brokePlayers.forEach((player) => {
+        const row = document.createElement("div");
+        row.className = `recharge-row ${state.selectedRechargePlayerId === player.id ? "selected" : ""}`;
+        row.innerHTML = `
+          <div class="check-ui"></div>
+          <div>
+            <div style="font-weight:800;">${player.name}</div>
+            <div class="mini">현재 ${formatMoney(player.stackAmount)}</div>
+          </div>
+        `;
+        row.onclick = () => {
+          state.selectedRechargePlayerId = state.selectedRechargePlayerId === player.id ? "" : player.id;
+          renderRoom();
+        };
+        rechargeList.appendChild(row);
+      });
+    }
+
+    function renderMyStatus(room, me) {
+      myStatusPills.innerHTML = "";
+
+      const myTurn = room.players[room.turnIndex]?.id === me.id && room.handPhase === "betting";
+      const toCall = Math.max(0, room.currentBet - Number(me.betAmount || 0));
+
+      [
+        `내 스택 ${formatMoney(me.stackAmount)}`,
+        `현재 베팅 ${formatMoney(me.betAmount)}`,
+        `콜 필요 ${formatMoney(toCall)}`,
+        myTurn ? "내 턴" : "대기 중"
+      ].forEach((text) => {
+        const pill = document.createElement("div");
+        pill.className = `pill ${text === "내 턴" ? "action-pill" : ""}`;
+        pill.textContent = text;
+        myStatusPills.appendChild(pill);
+      });
+
+      const canAct = myTurn && !me.folded && !me.allIn && !me.broke;
+      checkCallBtn.disabled = !canAct;
+      betRaiseBtn.disabled = !canAct;
+      allInBtn.disabled = !canAct;
+      foldBtn.disabled = !canAct;
+
+      actionSheet.classList.toggle("hidden", room.status !== "playing");
+      sheetSubtitle.textContent = canAct ? "지금은 내 턴입니다" : "지금은 내 턴이 아닙니다";
+    }
+
+    function showResultOverlay(message) {
+      if (!message) return;
+      resultText.textContent = message;
+      resultOverlay.classList.add("show");
+    }
+
+    function hideResultOverlay() {
+      resultOverlay.classList.remove("show");
+      if (!state.room) return;
+      state.lastSeenResultMessage = state.room.resultMessage || "";
+    }
+
+    function openSheet() {
+      if (!state.room || state.room.status !== "playing") return;
+      state.isSheetOpen = true;
+      actionSheet.classList.add("open");
+      sheetBackdrop.classList.add("show");
+    }
+
+    function closeSheet(force = false) {
+      state.isSheetOpen = false;
+      actionSheet.classList.remove("open");
+      sheetBackdrop.classList.remove("show");
+      if (force) actionSheet.classList.add("hidden");
+    }
+
+    function toggleSheet() {
+      if (!state.room || state.room.status !== "playing") return;
+      state.isSheetOpen ? closeSheet() : openSheet();
+    }
+
+    function renderRoom() {
+      const room = state.room;
+      if (!room) return;
+
+      const me = room.players.find((p) => p.id === state.playerId && !p.left);
+      if (!me) return;
+
+      authView.classList.add("hidden");
+      roomView.classList.remove("hidden");
+
+      roomCodeText.textContent = room.roomCode;
+      roomStatusText.textContent = room.status === "waiting" ? "대기 중" : "게임 중";
+      const dealer = room.players.find((p) => p.id === room.dealerPlayerId && !p.left);
+      dealerNameText.textContent = dealer?.name || "-";
+      myRolePill.textContent = room.hostPlayerId === state.playerId ? "호스트" : "플레이어";
+      shareLink.textContent = `${location.origin}${location.pathname}?room=${room.roomCode}`;
+      lastActionBox.textContent = room.lastActionText || "";
+
+      const isHost = room.hostPlayerId === state.playerId;
+      const isPlaying = room.status === "playing";
+
+      waitingPanel.classList.toggle("hidden", isPlaying);
+      gameTopPanel.classList.toggle("hidden", !isPlaying);
+      gamePanel.classList.toggle("hidden", !isPlaying);
+      hostWaitingControls.classList.toggle("hidden", !isHost || isPlaying);
+      hostSettlePanel.classList.toggle("hidden", !isHost || !isPlaying);
+
+      potText.textContent = formatMoney(room.potAmount);
+      streetText.textContent = STREET_NAMES[room.currentStreet] || "-";
+
+      waitingList.innerHTML = "";
+      room.players.forEach((player, idx) => {
+        waitingList.appendChild(createWaitingOrderItem(player, idx, isHost));
+      });
+
+      waitingMessage.textContent =
+        room.players.filter((p) => !p.left).length < 2
+          ? "게임 시작에는 최소 2명이 필요합니다."
+          : "";
+
+      renderPlayers(room, me);
+      renderSidePots(room);
+      renderRecharge(room);
+      renderMyStatus(room, me);
+
+      if (room.resultOpen && room.resultMessage && state.lastSeenResultMessage !== room.resultMessage) {
+        showResultOverlay(room.resultMessage);
+      }
+
+      if (!isPlaying) {
+        closeSheet(true);
+      } else {
+        actionSheet.classList.remove("hidden");
+      }
+    }
+
+    async function reorderPlayerHandler(playerId, direction) {
+      try {
+        await mutateRoom(state.roomCode, (room) => {
+          if (room.hostPlayerId !== state.playerId) throw new Error("호스트만 순서를 바꿀 수 있습니다.");
+          if (room.status !== "waiting") throw new Error("대기방에서만 순서를 바꿀 수 있습니다.");
+
+          const idx = room.players.findIndex((p) => p.id === playerId);
+          if (idx < 0) return room;
+          const newIdx = idx + direction;
+          if (newIdx < 0 || newIdx >= room.players.length) return room;
+
+          const temp = room.players[idx];
+          room.players[idx] = room.players[newIdx];
+          room.players[newIdx] = temp;
+          return room;
+        });
+      } catch (err) {
+        setMessage(waitingMessage, err.message);
+      }
+    }
+
+    async function createRoomHandler() {
+      try {
+        if (!state.authReady) throw new Error("로그인 대기 중입니다.");
+
+        const playerName = normalizeName(playerNameInput.value);
+        if (!playerName) throw new Error("이름을 입력하세요.");
+
+        const initialAmount = 5000;
+        const playerId = createId();
+
+        let roomCode = "";
+        for (let i = 0; i < 10; i++) {
+          roomCode = generateRoomCode();
+          const snap = await get(roomPath(roomCode));
+          if (!snap.exists()) break;
+          roomCode = "";
+        }
+        if (!roomCode) throw new Error("방 코드 생성에 실패했습니다.");
+
+        const room = {
+          roomCode,
+          hostPlayerId: playerId,
+          dealerPlayerId: playerId,
+          status: "waiting",
+          initialAmount,
+          potAmount: 0,
+          currentBet: 0,
+          currentStreet: 0,
+          turnIndex: -1,
+          handPhase: "settled",
+          settlementReason: "",
+          resultMessage: "",
+          resultOpen: false,
+          lastActionText: "방이 생성되었습니다. 초기 금액을 확인하고 게임을 시작하세요.",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          players: [
+            {
+              id: playerId,
+              name: playerName,
+              stackAmount: initialAmount,
+              stackChips: amountToChips(initialAmount),
+              betAmount: 0,
+              betChips: amountToChips(0),
+              committedAmount: 0,
+              folded: false,
+              allIn: false,
+              broke: false,
+              left: false,
+              hasActedThisStreet: false,
+              recentAction: ""
+            }
+          ]
+        };
+
+        await set(roomPath(roomCode), room);
+        saveSession(roomCode, playerName);
+        subscribeRoom(roomCode);
+        setMessage(authMessage, "");
+      } catch (err) {
+        setMessage(authMessage, err.message);
+      }
+    }
+
+    async function joinRoomHandler() {
+      try {
+        if (!state.authReady) throw new Error("로그인 대기 중입니다.");
+
+        const playerName = normalizeName(playerNameInput.value);
+        if (!playerName) throw new Error("이름을 입력하세요.");
+
+        const roomCode = sanitizeRoomCode(roomCodeInput.value);
+        if (!roomCode) throw new Error("방 코드를 입력하세요.");
+
+        const playerId = createId();
+
+        await mutateRoom(roomCode, (room) => {
+          if (!room) throw new Error("방을 찾을 수 없습니다.");
+          if (room.players.filter((p) => !p.left).length >= MAX_PLAYERS) throw new Error("방이 가득 찼습니다.");
+
+          const existingActive = room.players.find((p) => p.id === playerId && !p.left);
+          if (existingActive) return room;
+
+          room.players.push({
+            id: playerId,
+            name: playerName,
+            stackAmount: room.initialAmount || 5000,
+            stackChips: amountToChips(room.initialAmount || 5000),
+            betAmount: 0,
+            betChips: amountToChips(0),
+            committedAmount: 0,
+            folded: false,
+            allIn: false,
+            broke: false,
+            left: false,
+            hasActedThisStreet: false,
+            recentAction: ""
+          });
+
+          room.lastActionText = `${playerName} 님이 참가했습니다.`;
+          return room;
+        });
+
+        saveSession(roomCode, playerName);
+        subscribeRoom(roomCode);
+        setMessage(authMessage, "");
+      } catch (err) {
+        setMessage(authMessage, err.message);
+      }
+    }
+
+    async function applyInitialAmountHandler() {
+      try {
+        const value = validateMoney(initialAmountInput.value);
+
+        await mutateRoom(state.roomCode, (room) => {
+          if (room.hostPlayerId !== state.playerId) throw new Error("호스트만 초기 금액을 바꿀 수 있습니다.");
+          if (room.status !== "waiting") throw new Error("대기방에서만 변경할 수 있습니다.");
+
+          room.initialAmount = value;
+          room.players.forEach((p) => {
+            if (!p.left) {
+              p.stackAmount = value;
+              p.betAmount = 0;
+              p.committedAmount = 0;
+              p.folded = false;
+              p.allIn = false;
+              p.broke = false;
+              syncPlayerChips(p);
+            }
+          });
+          room.lastActionText = `초기 금액이 ${value.toLocaleString()}원으로 설정되었습니다.`;
+          return room;
+        });
+
+        setMessage(waitingMessage, "초기 금액을 적용했습니다.", true);
+      } catch (err) {
+        setMessage(waitingMessage, err.message);
+      }
+    }
+
+    async function startGameHandler() {
+      try {
+        await mutateRoom(state.roomCode, (room) => {
+          if (room.status !== "waiting") throw new Error("이미 게임 중입니다.");
+          if (room.hostPlayerId !== state.playerId) throw new Error("호스트만 가능합니다.");
+
+          if (!room.dealerPlayerId) {
+            const firstDealer = room.players.find((p) => !p.left && !p.broke);
+            room.dealerPlayerId = firstDealer?.id || room.hostPlayerId;
+          }
+
+          setupNewHand(room);
+          return room;
+        });
+      } catch (err) {
+        setMessage(waitingMessage, err.message);
+      }
+    }
+
+    async function checkCallHandler() {
+      try {
+        await mutateRoom(state.roomCode, (room) => {
+          const player = ensureTurnPlayer(room, state.playerId);
+          const actorIndex = room.turnIndex;
+          const toCall = Math.max(0, room.currentBet - Number(player.betAmount || 0));
+
+          if (toCall > player.stackAmount) {
+            throw new Error("콜 금액이 부족합니다. 올인을 사용하세요.");
+          }
+
+          player.stackAmount -= toCall;
+          player.betAmount += toCall;
+          player.hasActedThisStreet = true;
+          syncPlayerChips(player);
+
+          setRecentAction(room, player.id, toCall === 0 ? "CHECK" : "CALL");
+          room.lastActionText =
+            toCall === 0
+              ? `${player.name}: Check`
+              : `${player.name}: Call ${toCall.toLocaleString()}`;
+
+          evaluateGameFlowAfterAction(room, actorIndex);
+          return room;
+        });
+        setMessage(myActionMessage, "");
+        closeSheet();
+      } catch (err) {
+        setMessage(myActionMessage, err.message);
+      }
+    }
+
+    async function betRaiseHandler() {
+      try {
+        await mutateRoom(state.roomCode, (room) => {
+          const player = ensureTurnPlayer(room, state.playerId);
+          const actorIndex = room.turnIndex;
+          const targetBet = validateMoney(targetBetInput.value);
+          const beforeCurrentBet = room.currentBet;
+
+          if (targetBet <= Number(player.betAmount || 0)) {
+            throw new Error("현재 내 베팅보다 큰 금액을 입력하세요.");
+          }
+          if (targetBet < beforeCurrentBet) {
+            throw new Error("현재 베팅 이상이어야 합니다.");
+          }
+
+          const additional = targetBet - Number(player.betAmount || 0);
+          if (additional > player.stackAmount) {
+            throw new Error("스택이 부족합니다.");
+          }
+
+          player.stackAmount -= additional;
+          player.betAmount = targetBet;
+          player.hasActedThisStreet = true;
+          if (player.stackAmount === 0) player.allIn = true;
+          syncPlayerChips(player);
+
+          room.currentBet = targetBet;
+          resetOtherPlayersActed(room, player.id);
+          setRecentAction(room, player.id, beforeCurrentBet === 0 ? "BET" : "RAISE");
+          room.lastActionText =
+            beforeCurrentBet === 0
+              ? `${player.name}: Bet ${targetBet.toLocaleString()}`
+              : `${player.name}: Raise ${targetBet.toLocaleString()}`;
+
+          evaluateGameFlowAfterAction(room, actorIndex);
+          return room;
+        });
+        targetBetInput.value = "";
+        setMessage(myActionMessage, "");
+        closeSheet();
+      } catch (err) {
+        setMessage(myActionMessage, err.message);
+      }
+    }
+
+    async function foldHandler() {
+      try {
+        await mutateRoom(state.roomCode, (room) => {
+          const player = ensureTurnPlayer(room, state.playerId);
+          const actorIndex = room.turnIndex;
+
+          player.folded = true;
+          player.hasActedThisStreet = true;
+          setRecentAction(room, player.id, "FOLD");
+          room.lastActionText = `${player.name}: Fold`;
+
+          evaluateGameFlowAfterAction(room, actorIndex);
+          return room;
+        });
+        setMessage(myActionMessage, "");
+        closeSheet();
+      } catch (err) {
+        setMessage(myActionMessage, err.message);
+      }
+    }
+
+    async function allInHandler() {
+      try {
+        await mutateRoom(state.roomCode, (room) => {
+          const player = ensureTurnPlayer(room, state.playerId);
+          const actorIndex = room.turnIndex;
+          const beforeCurrentBet = room.currentBet;
+
+          if (player.stackAmount <= 0) throw new Error("이미 잔액이 없습니다.");
+
+          const moved = player.stackAmount;
+          const totalBetAfter = player.betAmount + moved;
+          player.stackAmount = 0;
+          player.betAmount = totalBetAfter;
+          player.hasActedThisStreet = true;
+          player.allIn = true;
+          syncPlayerChips(player);
+
+          if (totalBetAfter > room.currentBet) {
+            room.currentBet = totalBetAfter;
+            resetOtherPlayersActed(room, player.id);
+          }
+
+          setRecentAction(room, player.id, "ALL-IN");
+          room.lastActionText =
+            totalBetAfter > beforeCurrentBet
+              ? `${player.name}: All-in / Raise ${moved.toLocaleString()}`
+              : `${player.name}: All-in ${moved.toLocaleString()}`;
+
+          evaluateGameFlowAfterAction(room, actorIndex);
+          return room;
+        });
+        setMessage(myActionMessage, "");
+        closeSheet();
+      } catch (err) {
+        setMessage(myActionMessage, err.message);
+      }
+    }
+
+    async function settlePotHandler() {
+      try {
+        await mutateRoom(state.roomCode, (room) => {
+          if (room.status !== "playing") throw new Error("게임 중이 아닙니다.");
+          if (room.hostPlayerId !== state.playerId) throw new Error("호스트만 가능합니다.");
+          if (room.handPhase !== "settlement") throw new Error("지금은 정산할 수 없습니다.");
+
+          const sidePots = computeSidePots(room);
+          if (sidePots.length === 0) throw new Error("정산할 사이드팟이 없습니다.");
+
+          const payoutMap = new Map();
+
+          for (const pot of sidePots) {
+            const winnerIds = state.selectedWinnersByPot[pot.index] || [];
+            if (winnerIds.length === 0) throw new Error(`${pot.index + 1}번 팟의 승자를 선택하세요.`);
+
+            const invalid = winnerIds.some((id) => !pot.eligiblePlayerIds.includes(id));
+            if (invalid) throw new Error(`${pot.index + 1}번 팟에 선택할 수 없는 승자가 있습니다.`);
+
+            const winners = room.players.filter((p) => winnerIds.includes(p.id));
+            const share = Math.floor(pot.amount / winners.length);
+            let remainder = pot.amount - share * winners.length;
+
+            winners.forEach((winner) => {
+              const extra = remainder > 0 ? 1 : 0;
+              remainder -= extra;
+              const prev = payoutMap.get(winner.id) || { name: winner.name, amount: 0 };
+              prev.amount += share + extra;
+              payoutMap.set(winner.id, prev);
+            });
+          }
+
+          room.players.forEach((p) => {
+            const payout = payoutMap.get(p.id);
+            if (payout) p.stackAmount += payout.amount;
+            p.betAmount = 0;
+            p.committedAmount = 0;
+            p.folded = false;
+            p.allIn = false;
+            p.hasActedThisStreet = false;
+            p.recentAction = "";
+            syncPlayerChips(p);
+          });
+
+          room.potAmount = 0;
+          room.currentBet = 0;
+          room.currentStreet = 0;
+          room.turnIndex = -1;
+          room.handPhase = "settled";
+          room.settlementReason = "";
+          room.resultOpen = true;
+          room.resultMessage = [...payoutMap.values()]
+            .filter((x) => x.amount > 0)
+            .map((x) => `${x.name} 님이 ${x.amount.toLocaleString()}원을 가져갔습니다.`)
+            .join("\n");
+          room.lastActionText = room.resultMessage || "정산이 완료되었습니다.";
+
+          updateBrokeFlags(room);
+          maybeChampionWin(room);
+          return room;
+        });
+
+        state.selectedWinnersByPot = {};
+        setMessage(hostSettleMessage, "정산을 완료했습니다.", true);
+      } catch (err) {
+        setMessage(hostSettleMessage, err.message);
+      }
+    }
+
+    async function startNextHandHandler() {
+      try {
+        await mutateRoom(state.roomCode, (room) => {
+          if (room.hostPlayerId !== state.playerId) throw new Error("호스트만 가능합니다.");
+          if (room.handPhase !== "settled") throw new Error("아직 이전 판이 끝나지 않았습니다.");
+
+          room.players = room.players.filter((p) => !p.left);
+          updateBrokeFlags(room);
+          room.dealerPlayerId = findNextDealerPlayerId(room);
+
+          setupNewHand(room, "새 판이 시작되었습니다.");
+          return room;
+        });
+        setMessage(hostSettleMessage, "새 판을 시작했습니다.", true);
+      } catch (err) {
+        setMessage(hostSettleMessage, err.message);
+      }
+    }
+
+    async function rechargeHandler() {
+      try {
+        await mutateRoom(state.roomCode, (room) => {
+          if (room.hostPlayerId !== state.playerId) throw new Error("호스트만 가능합니다.");
+          if (!state.selectedRechargePlayerId) throw new Error("충전할 플레이어를 선택하세요.");
+
+          const player = room.players.find((p) => p.id === state.selectedRechargePlayerId && !p.left);
+          if (!player) throw new Error("플레이어를 찾을 수 없습니다.");
+
+          const rechargeAmount = Math.max(10, Math.floor(room.initialAmount / 10 / 10) * 10);
+          player.stackAmount = rechargeAmount;
+          player.broke = false;
+          player.folded = false;
+          player.allIn = false;
+          syncPlayerChips(player);
+
+          room.lastActionText = `${player.name} 님이 ${rechargeAmount.toLocaleString()}원으로 충전되었습니다.`;
+          return room;
+        });
+
+        state.selectedRechargePlayerId = "";
+        setMessage(hostSettleMessage, "충전했습니다.", true);
+      } catch (err) {
+        setMessage(hostSettleMessage, err.message);
+      }
+    }
+
+    async function leaveRoomAction() {
+      try {
+        if (state.roomCode && state.playerId) {
+          await mutateRoom(state.roomCode, (room) => {
+            const me = room.players.find((p) => p.id === state.playerId);
+            if (!me) return room;
+
+            me.left = true;
+            me.recentAction = "";
+            room.lastActionText = `${me.name} 님이 방을 나갔습니다.`;
+
+            const active = room.players.filter((p) => !p.left);
+            if (active.length === 0) return null;
+
+            if (room.hostPlayerId === state.playerId) {
+              room.hostPlayerId = active[0].id;
+            }
+
+            if (room.dealerPlayerId === state.playerId) {
+              room.dealerPlayerId = active[0]?.id || "";
+            }
+
+            updateBrokeFlags(room);
+            return room;
+          });
+        }
+      } catch {}
+      leaveRoomLocalOnly();
+      setMessage(authMessage, "");
+    }
+
+    async function copyLinkHandler() {
+      try {
+        await navigator.clipboard.writeText(`${location.origin}${location.pathname}?room=${state.room?.roomCode || ""}`);
+        setMessage(authMessage, "링크를 복사했습니다.", true);
+      } catch {
+        setMessage(authMessage, "링크 복사에 실패했습니다.");
+      }
+    }
+
+    createRoomBtn.addEventListener("click", createRoomHandler);
+    joinRoomBtn.addEventListener("click", joinRoomHandler);
+    applyInitialAmountBtn.addEventListener("click", applyInitialAmountHandler);
+    startGameBtn.addEventListener("click", startGameHandler);
+    leaveRoomBtn.addEventListener("click", leaveRoomAction);
+    copyLinkBtn.addEventListener("click", copyLinkHandler);
+
+    checkCallBtn.addEventListener("click", checkCallHandler);
+    betRaiseBtn.addEventListener("click", betRaiseHandler);
+    foldBtn.addEventListener("click", foldHandler);
+    allInBtn.addEventListener("click", allInHandler);
+    settlePotBtn.addEventListener("click", settlePotHandler);
+    startNextHandBtn.addEventListener("click", startNextHandHandler);
+    rechargeBtn.addEventListener("click", rechargeHandler);
+
+    sheetHandleArea.addEventListener("click", toggleSheet);
+    closeSheetBtn.addEventListener("click", closeSheet);
+    sheetBackdrop.addEventListener("click", closeSheet);
+    resultCloseBtn.addEventListener("click", hideResultOverlay);
+
+    window.reorderPlayer = reorderPlayerHandler;
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) return;
+
+      state.authReady = true;
+      state.playerId = user.uid;
+      renderAuthReadyState();
+
+      initSession();
+      initQueryRoom();
+
+      if (state.roomCode) {
+        const code = sanitizeRoomCode(state.roomCode);
+        if (code) {
+          try {
+            const snap = await get(ref(db, `rooms/${code}`));
+            if (snap.exists()) {
+              const room = snap.val();
+              const me = room.players?.find((p) => p.id === state.playerId && !p.left);
+              if (me) {
+                subscribeRoom(code);
+              } else {
+                clearSession();
+              }
+            } else {
+              clearSession();
+            }
+          } catch {
+            clearSession();
+          }
+        }
+      }
+    });
+
+    signInAnonymously(auth).catch((err) => {
+      setMessage(authMessage, `Firebase 익명 로그인 실패: ${err.message}`);
+    });
+
+    renderAuthReadyState();
+  </script>
+</body>
+  </html>

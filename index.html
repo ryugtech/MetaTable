@@ -574,6 +574,11 @@
     const auth = getAuth(app);
     const db = getDatabase(app);
 
+    signInAnonymously(auth).catch((err) => {
+        console.error("인증 실패:", err);
+        setMessage(authMessage, "인증에 실패했습니다: " + err.message);
+        });
+
     const MIN_UNIT = 10;
     const MAX_PLAYERS = 4;
     const STREET_NAMES = ["프리플랍", "플랍", "턴", "리버"];

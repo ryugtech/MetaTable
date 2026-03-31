@@ -795,10 +795,48 @@
       return players[(currentIndex + 1) % players.length].id;
     }
 
-    function findFirstTurnFromDealer(room) {
+    function findSmallBlindIndex(room) {
+      const eligible = blindEligiblePlayers(room);
+      if (eligible.length < 2) return -1;
+
+      const dealerIndex = room.players.findIndex((p) => p.id === room.dealerPlayerId);
+      if (dealerIndex === -1) return -1;
+
+      if (eligible.length === 2) return dealerIndex;
+      return findNextPlayableFromIndex(room, dealerIndex, false);
+    }
+
+    function findBigBlindIndex(room) {
+      const eligible = blindEligiblePlayers(room);
+      if (eligible.length < 2) return -1;
+
+      const sbIndex = findSmallBlindIndex(room);
+      if (sbIndex === -1) return -1;
+
+      if (eligible.length === 2) {
+        return findNextPlayableFromIndex(room, sbIndex, false);
+      }
+      return findNextPlayableFromIndex(room, sbIndex, false);
+    }
+
+    function findFirstPreflopTurn(room) {
+      const eligible = blindEligiblePlayers(room);
+      if (eligible.length < 2) return -1;
+
+      const bbIndex = findBigBlindIndex(room);
+      const dealerIndex = room.players.findIndex((p) => p.id === room.dealerPlayerId);
+
+      if (eligible.length === 2) {
+        return findNextActableFromIndex(room, dealerIndex, true);
+      }
+
+      return findNextActableFromIndex(room, bbIndex, false);
+    }
+
+    function findFirstPostflopTurn(room) {
       const dealerIndex = room.players.findIndex((p) => p.id === room.dealerPlayerId);
       if (dealerIndex === -1) return findFirstActableIndex(room);
-      return findNextActableFromIndex(room, dealerIndex, true);
+      return findNextActableFromIndex(room, dealerIndex, false);
     }
 
     function postBlind(player, amount) {
@@ -819,9 +857,8 @@
         return;
       }
 
-      const dealerIndex = room.players.findIndex((p) => p.id === room.dealerPlayerId);
-      const sbIndex = findNextPlayableFromIndex(room, dealerIndex, false);
-      const bbIndex = findNextPlayableFromIndex(room, sbIndex, false);
+      const sbIndex = findSmallBlindIndex(room);
+      const bbIndex = findBigBlindIndex(room);
 
       const sbPlayer = room.players[sbIndex];
       const bbPlayer = room.players[bbIndex];
@@ -829,6 +866,7 @@
       const sbPaid = postBlind(sbPlayer, Number(room.smallBlindAmount || 0));
       const bbPaid = postBlind(bbPlayer, Number(room.bigBlindAmount || 0));
 
+      clearRecentActions(room);
       sbPlayer.recentAction = `SB ${sbPaid.toLocaleString()}`;
       bbPlayer.recentAction = `BB ${bbPaid.toLocaleString()}`;
 
@@ -958,7 +996,7 @@
       });
 
       assignBlinds(room);
-      room.turnIndex = findFirstTurnFromDealer(room);
+      room.turnIndex = findFirstPreflopTurn(room);
 
       const dealer = getDealerPlayer(room);
       const sb = room.players.find((p) => p.id === room.smallBlindPlayerId);
@@ -1034,7 +1072,7 @@
         }
       });
 
-      room.turnIndex = findFirstTurnFromDealer(room);
+      room.turnIndex = findFirstPostflopTurn(room);
       room.lastActionText = `${STREET_NAMES[room.currentStreet]} 라운드가 시작되었습니다.`;
     }
 
@@ -2100,4 +2138,4 @@
     renderAuthReadyState();
   </script>
 </body>
-</html>
+  </html>

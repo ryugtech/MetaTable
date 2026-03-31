@@ -167,19 +167,13 @@
       margin-top: 10px;
       margin-bottom: 10px;
     }
-    .amount-tag {
-      background: #1e293b;
-      border-radius: 10px;
-      padding: 8px 10px;
-      font-size: 13px;
-      font-weight: 700;
-    }
 
     .stack-view {
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
       align-items: flex-end;
+      min-height: 72px;
       margin-top: 8px;
     }
     .chip-stack {
@@ -206,14 +200,6 @@
     .green-chip { background: #22c55e; }
     .black-chip { background: #111827; }
     .gold-chip { background: #eab308; }
-    .empty-stack {
-      background: #111827;
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 10px;
-      padding: 6px 10px;
-      color: #94a3b8;
-      display: inline-block;
-    }
 
     .sidepot-box, .recharge-box {
       background: #0f172a;
@@ -474,7 +460,7 @@
       <div id="gamePanel" class="hidden">
         <div class="card">
           <div class="title" style="font-size:20px;">플레이어 상태</div>
-          <div class="subtitle">현재 베팅 칩과 금액을 모두 확인할 수 있습니다.</div>
+          <div class="subtitle">현재 테이블 칩과 금액을 확인할 수 있습니다.</div>
           <div id="playersList" class="players"></div>
         </div>
 
@@ -541,6 +527,15 @@
   </div>
 
   <script type="module">
+    const GH_REPO_BASE = "/MetaTable/";
+
+    if (
+      location.hostname.endsWith("github.io") &&
+      !location.pathname.startsWith(GH_REPO_BASE)
+    ) {
+      location.replace(`${location.origin}${GH_REPO_BASE}${location.search}${location.hash}`);
+    }
+
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import {
       getAuth,
@@ -1245,15 +1240,9 @@
       const playerId = state.playerId;
       const roomRef = ref(db, `rooms/${roomCode}`);
 
-      let precheckSnap;
-      try {
-        precheckSnap = await get(roomRef);
-      } catch (err) {
-        throw new Error(friendlyFirebaseError(err, "방 조회에 실패했습니다."));
-      }
-
+      const precheckSnap = await get(roomRef);
       if (!precheckSnap.exists()) {
-        throw new Error("해당 방 코드를 찾을 수 없습니다.");
+        throw new Error("방을 찾을 수 없습니다.");
       }
 
       const preRoom = precheckSnap.val();
@@ -1261,36 +1250,38 @@
         throw new Error("대기방에서만 참가할 수 있습니다.");
       }
 
+      state.joinInProgress = true;
+
       await mutateRoom(roomCode, (roomData) => {
         if (!roomData) throw new Error("방을 찾을 수 없습니다.");
         if (roomData.status !== "waiting") throw new Error("대기방에서만 참가할 수 있습니다.");
 
-        const active = roomData.players.filter((p) => !p.left);
-        if (active.length >= MAX_PLAYERS) throw new Error("최대 4명입니다.");
-
         const duplicateName = roomData.players.some((p) => p.name === playerName && !p.left && p.id !== playerId);
         if (duplicateName) throw new Error("같은 이름이 이미 있습니다.");
 
-        const existing = roomData.players.find((p) => p.id === playerId);
-
-        if (existing && !existing.left) {
-          existing.name = playerName;
+        const existingActive = roomData.players.find((p) => p.id === playerId && !p.left);
+        if (existingActive) {
+          existingActive.name = playerName;
           roomData.lastActionText = `${playerName} 님이 다시 연결되었습니다.`;
           return;
         }
 
-        if (existing && existing.left) {
-          existing.left = false;
-          existing.name = playerName;
-          existing.folded = false;
-          existing.allIn = false;
-          existing.broke = existing.stackAmount <= 0;
-          existing.hasActedThisStreet = false;
-          existing.recentAction = "";
-          syncPlayerChips(existing);
+        const existingLeft = roomData.players.find((p) => p.id === playerId && p.left);
+        if (existingLeft) {
+          existingLeft.left = false;
+          existingLeft.name = playerName;
+          existingLeft.folded = false;
+          existingLeft.allIn = false;
+          existingLeft.broke = existingLeft.stackAmount <= 0;
+          existingLeft.hasActedThisStreet = false;
+          existingLeft.recentAction = "";
+          syncPlayerChips(existingLeft);
           roomData.lastActionText = `${playerName} 님이 다시 참가했습니다.`;
           return;
         }
+
+        const activeCount = roomData.players.filter((p) => !p.left).length;
+        if (activeCount >= MAX_PLAYERS) throw new Error("최대 4명입니다.");
 
         roomData.players.push({
           id: playerId,
@@ -1313,7 +1304,6 @@
 
       state.roomCode = roomCode;
       state.playerName = playerName;
-      state.joinInProgress = true;
       saveSession();
       subscribeRoom(roomCode);
     }
@@ -1324,6 +1314,7 @@
           await mutateRoom(state.roomCode, (room) => {
             const me = room.players.find((p) => p.id === state.playerId);
             if (!me) return;
+
             me.left = true;
             me.recentAction = "";
             room.lastActionText = `${me.name} 님이 방을 나갔습니다.`;
@@ -1375,34 +1366,40 @@
           return;
         }
 
-        if (!state.roomMissingTimer) {
-          state.roomMissingTimer = setTimeout(async () => {
-            try {
-              const confirmSnap = await get(roomRef);
-              if (!confirmSnap.exists()) {
-                setMessage(authMessage, "방이 삭제되었거나 존재하지 않습니다.");
-                leaveRoomLocalOnly();
-                return;
-              }
-
-              const confirmRoom = confirmSnap.val();
-              const confirmedMe = confirmRoom.players.some((p) => p.id === state.playerId && !p.left);
-
-              if (!confirmedMe) {
-                if (state.joinInProgress) {
-                  setMessage(authMessage, "방 참가 반영에 실패했습니다. 다시 참가해 주세요.");
-                } else {
-                  setMessage(authMessage, "방에서 제외되었습니다.");
+        if (state.joinInProgress) {
+          if (!state.roomMissingTimer) {
+            state.roomMissingTimer = setTimeout(async () => {
+              try {
+                const confirmSnap = await get(roomRef);
+                if (!confirmSnap.exists()) {
+                  setMessage(authMessage, "방이 삭제되었거나 존재하지 않습니다.");
+                  leaveRoomLocalOnly();
+                  return;
                 }
-                leaveRoomLocalOnly();
+
+                const confirmRoom = confirmSnap.val();
+                const confirmedMe = confirmRoom.players.some((p) => p.id === state.playerId && !p.left);
+
+                if (confirmedMe) {
+                  state.room = enrichRoom(confirmRoom);
+                  state.joinInProgress = false;
+                  renderRoom();
+                } else {
+                  setMessage(authMessage, "방을 찾을 수 없습니다.");
+                  leaveRoomLocalOnly();
+                }
+              } catch (err) {
+                setMessage(authMessage, friendlyFirebaseError(err, "방 확인에 실패했습니다."));
+              } finally {
+                clearRoomMissingTimer();
               }
-            } catch (err) {
-              setMessage(authMessage, friendlyFirebaseError(err, "방 확인에 실패했습니다."));
-            } finally {
-              clearRoomMissingTimer();
-            }
-          }, 1500);
+            }, 2000);
+          }
+          return;
         }
+
+        setMessage(authMessage, "방에서 제외되었습니다.");
+        leaveRoomLocalOnly();
       }, (error) => {
         setMessage(authMessage, friendlyFirebaseError(error, "방 구독에 실패했습니다."));
       });
@@ -1424,7 +1421,7 @@
         `;
       }).join("");
 
-      return html || `<div class="empty-stack">없음</div>`;
+      return html || `<div class="mini">칩 없음</div>`;
     }
 
     function renderWaitingList() {
@@ -1476,9 +1473,6 @@
               <div class="player-name">${escapeHtml(player.name)}</div>
               <div class="mini">보유금 ${formatMoney(player.stackAmount)} · 베팅 ${formatMoney(player.betAmount)}</div>
               <div class="amount-tags">${tags}</div>
-
-              <div class="mini">스택 칩</div>
-              <div class="stack-view">${renderChipStacks(player.stackChips)}</div>
 
               <div class="mini" style="margin-top:12px;">테이블 칩</div>
               <div class="stack-view">${renderChipStacks(player.betChips)}</div>
@@ -2076,4 +2070,4 @@
     renderAuthReadyState();
   </script>
 </body>
-          </html>
+  </html>

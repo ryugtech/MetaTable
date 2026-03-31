@@ -344,17 +344,6 @@
       grid-template-columns: repeat(2, minmax(0,1fr));
       gap: 10px;
     }
-    .sheet-pill {
-      display: inline-flex;
-      align-items: center;
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: #111827;
-      color: white;
-      border: 1px solid rgba(255,255,255,0.06);
-      font-size: 13px;
-      font-weight: 700;
-    }
 
     .result-overlay {
       position: fixed;
@@ -556,19 +545,18 @@
       get,
       set,
       onValue,
-      runTransaction,
-      serverTimestamp
+      runTransaction
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
     const firebaseConfig = {
-        apiKey: "AIzaSyCPDZ_3kIKIB28So9CGMMnZxvQ8FEEQfZ0",
-        authDomain: "metatable.firebaseapp.com",
-        databaseURL: "https://metatable-default-rtdb.asia-southeast1.firebasedatabase.app",
-        projectId: "metatable",
-        storageBucket: "metatable.firebasestorage.app",
-        messagingSenderId: "714757640435",
-        appId: "1:714757640435:web:d0e7c19f7136bf7727a786",
-        measurementId: "G-3JJY3JH6TN"
+      apiKey: "AIzaSyCPDZ_3kIKIB28So9CGMMnZxvQ8FEEQfZ0",
+      authDomain: "metatable.firebaseapp.com",
+      databaseURL: "https://metatable-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "metatable",
+      storageBucket: "metatable.firebasestorage.app",
+      messagingSenderId: "714757640435",
+      appId: "1:714757640435:web:d0e7c19f7136bf7727a786",
+      measurementId: "G-3JJY3JH6TN"
     };
 
     const app = initializeApp(firebaseConfig);
@@ -596,7 +584,8 @@
       selectedWinnersByPot: {},
       selectedRechargePlayerId: "",
       isSheetOpen: false,
-      lastSeenResultMessage: ""
+      lastSeenResultMessage: "",
+      authUserReady: false
     };
 
     const authView = document.getElementById("authView");
@@ -760,10 +749,6 @@
           p.hasActedThisStreet = false;
         }
       });
-    }
-
-    function sumCurrentBets(room) {
-      return room.players.reduce((sum, p) => sum + Number(p.betAmount || 0), 0);
     }
 
     function collectStreetBetsToCommitted(room) {
@@ -974,52 +959,38 @@
       room.settlementReason = "";
 
       room.players.forEach((p) => {
-        if (!p.left && !p.folded && !p.broke && !p.allIn) {
-          p.hasActedThisStreet = false;
+        if (!p.left && !p.folded && !p.broke) {
+          p.hasActedThisStreet = !!p.allIn;
         }
-        p.betAmount = 0;
-        syncPlayerChips(p);
       });
 
       room.turnIndex = findFirstActableIndex(room);
-
-      if (maybeAllInSettlement(room)) return;
       room.lastActionText = `${STREET_NAMES[room.currentStreet]} 베팅 라운드가 시작되었습니다.`;
     }
 
     function evaluateGameFlowAfterAction(room, actorIndex) {
       if (autoAwardFoldWin(room)) return;
       if (maybeAllInSettlement(room)) return;
-
       if (isStreetComplete(room)) {
         moveToNextStreetOrSettlement(room);
         return;
       }
-
       room.turnIndex = findNextTurnIndex(room, actorIndex);
     }
 
-    function roomPublic(room, requesterId = "") {
-      const turnPlayer =
-        room.turnIndex >= 0 && room.turnIndex < room.players.length
-          ? room.players[room.turnIndex]
-          : null;
-
-      const you = room.players.find((p) => p.id === requesterId && !p.left) || null;
+    function enrichRoom(room) {
+      const host = room.players.find((p) => p.id === room.hostPlayerId);
+      const you = room.players.find((p) => p.id === state.playerId && !p.left) || null;
+      const tableBetAmount = room.players.reduce((sum, p) => sum + Number(p.betAmount || 0), 0);
 
       return {
         ...room,
-        dealerName: room.players.find((p) => p.id === room.hostPlayerId)?.name || "",
-        currentStreetName:
-          room.currentStreet >= 0 && room.currentStreet < STREET_NAMES.length
-            ? STREET_NAMES[room.currentStreet]
-            : "-",
-        currentTurnPlayerId: turnPlayer?.id || null,
-        currentTurnPlayerName: turnPlayer?.name || null,
-        tableBetAmount: sumCurrentBets(room),
-        sidePots: computeSidePots(room),
+        dealerName: host?.name || "-",
+        currentStreetName: STREET_NAMES[room.currentStreet] || "-",
+        tableBetAmount,
         you: you
           ? {
+              ...you,
               playerId: you.id,
               isHost: you.id === room.hostPlayerId,
               isDealer: you.id === room.hostPlayerId,
@@ -1040,46 +1011,150 @@
       };
     }
 
+    async function waitForAuthReady() {
+      if (state.authReady && auth.currentUser) return;
+      await new Promise((resolve, reject) => {
+        const startedAt = Date.now();
+        const timer = setInterval(() => {
+          if (state.authReady && auth.currentUser) {
+            clearInterval(timer);
+            resolve();
+            return;
+          }
+          if (Date.now() - startedAt > 10000) {
+            clearInterval(timer);
+            reject(new Error("Firebase 인증 준비가 완료되지 않았습니다."));
+          }
+        }, 100);
+      });
+    }
+
+    function friendlyFirebaseError(err, fallback = "요청 실패") {
+      const code = String(err?.code || "");
+      const message = String(err?.message || "");
+
+      if (code.includes("permission-denied") || message.includes("permission_denied")) {
+        return "권한 오류입니다. Firebase 인증 또는 DB Rules를 확인하세요.";
+      }
+      if (code.includes("network-request-failed")) {
+        return "네트워크 오류입니다. 인터넷 연결을 확인하세요.";
+      }
+      if (code.includes("auth/")) {
+        return `Firebase 인증 오류: ${message || code}`;
+      }
+      return message || fallback;
+    }
+
     async function mutateRoom(roomCode, mutator) {
-      const roomRef = ref(db, `rooms/${roomCode}`);
+      await waitForAuthReady();
+
+      const normalizedCode = sanitizeRoomCode(roomCode);
+      if (!normalizedCode) throw new Error("유효한 방 코드가 아닙니다.");
+
+      const roomRef = ref(db, `rooms/${normalizedCode}`);
       let capturedError = null;
 
-      const result = await runTransaction(roomRef, (current) => {
-        if (!current) {
-          capturedError = "방을 찾을 수 없습니다.";
-          return;
-        }
-
-        const room = structuredClone(current);
-
-        try {
-          const nextValue = mutator(room);
-          if (nextValue === null) {
-            return null;
+      try {
+        const result = await runTransaction(roomRef, (current) => {
+          if (!current) {
+            capturedError = "방을 찾을 수 없습니다.";
+            return current;
           }
-          room.updatedAt = Date.now();
-          return room;
-        } catch (err) {
-          capturedError = err.message || "요청 실패";
-          return;
-        }
-      });
 
-      if (capturedError) throw new Error(capturedError);
-      if (!result.committed) {
-        throw new Error(capturedError || "요청이 적용되지 않았습니다.");
+          const room = structuredClone(current);
+
+          try {
+            const nextValue = mutator(room);
+            if (nextValue === null) {
+              return null;
+            }
+            room.updatedAt = Date.now();
+            return room;
+          } catch (err) {
+            capturedError = err?.message || "요청 실패";
+            return undefined;
+          }
+        });
+
+        if (capturedError) {
+          throw new Error(capturedError);
+        }
+
+        if (!result.committed) {
+          if (!result.snapshot.exists()) {
+            throw new Error("방을 찾을 수 없습니다.");
+          }
+          throw new Error("요청이 적용되지 않았습니다.");
+        }
+
+        return result.snapshot.exists() ? result.snapshot.val() : null;
+      } catch (err) {
+        throw new Error(friendlyFirebaseError(err, "방 처리에 실패했습니다."));
       }
-      return result.snapshot.exists() ? result.snapshot.val() : null;
+    }
+
+    function saveSession() {
+      localStorage.setItem("poker-room-session", JSON.stringify({
+        roomCode: state.roomCode,
+        playerId: state.playerId,
+        playerName: state.playerName
+      }));
+    }
+
+    function clearSession() {
+      localStorage.removeItem("poker-room-session");
+    }
+
+    function initSession() {
+      try {
+        const raw = localStorage.getItem("poker-room-session");
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        state.roomCode = parsed.roomCode || "";
+        state.playerId = parsed.playerId || "";
+        state.playerName = parsed.playerName || "";
+        if (state.playerName) playerNameInput.value = state.playerName;
+        if (state.roomCode) roomCodeInput.value = state.roomCode;
+      } catch {}
+    }
+
+    function initQueryRoom() {
+      const params = new URLSearchParams(location.search);
+      const room = sanitizeRoomCode(params.get("room") || "");
+      if (room) roomCodeInput.value = room;
+    }
+
+    function leaveRoomLocalOnly() {
+      if (state.roomUnsub) {
+        state.roomUnsub();
+        state.roomUnsub = null;
+      }
+      state.room = null;
+      state.roomCode = "";
+      state.playerId = "";
+      state.selectedWinnersByPot = {};
+      state.selectedRechargePlayerId = "";
+      state.lastSeenResultMessage = "";
+      clearSession();
+      roomView.classList.add("hidden");
+      authView.classList.remove("hidden");
+      renderAuthReadyState();
+      setMessage(waitingMessage, "");
+      setMessage(hostSettleMessage, "");
+      setMessage(myActionMessage, "");
+      setMessage(authMessage, "");
     }
 
     async function createRoomAction() {
+      await waitForAuthReady();
+
       const playerName = normalizeName(playerNameInput.value);
       if (!playerName) throw new Error("이름을 입력하세요.");
 
       let roomCode = "";
       let roomRef = null;
 
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 20; i++) {
         const candidate = Math.random()
           .toString(36)
           .toUpperCase()
@@ -1090,7 +1165,6 @@
 
         const candidateRef = ref(db, `rooms/${candidate}`);
         const snap = await get(candidateRef);
-
         if (!snap.exists()) {
           roomCode = candidate;
           roomRef = candidateRef;
@@ -1098,10 +1172,28 @@
         }
       }
 
-      if (!roomCode || !roomRef) throw new Error("방 코드를 생성하지 못했습니다.");
+      if (!roomCode || !roomRef) {
+        throw new Error("방 코드를 생성하지 못했습니다.");
+      }
 
       const playerId = createId();
       const initialAmount = 5000;
+
+      const hostPlayer = {
+        id: playerId,
+        name: playerName,
+        stackAmount: initialAmount,
+        stackChips: amountToChips(initialAmount),
+        betAmount: 0,
+        betChips: amountToChips(0),
+        committedAmount: 0,
+        folded: false,
+        allIn: false,
+        broke: false,
+        left: false,
+        hasActedThisStreet: false,
+        recentAction: ""
+      };
 
       const room = {
         roomCode,
@@ -1117,25 +1209,9 @@
         resultMessage: "",
         resultOpen: false,
         lastActionText: "방이 생성되었습니다. 초기 금액을 확인하고 게임을 시작하세요.",
-        createdAt: Date.now(),
+        players: [hostPlayer],
         updatedAt: Date.now(),
-        players: [
-          {
-            id: playerId,
-            name: playerName,
-            stackAmount: initialAmount,
-            stackChips: amountToChips(initialAmount),
-            betAmount: 0,
-            betChips: amountToChips(0),
-            committedAmount: 0,
-            folded: false,
-            allIn: false,
-            broke: false,
-            left: false,
-            hasActedThisStreet: false,
-            recentAction: ""
-          }
-        ]
+        createdAt: Date.now()
       };
 
       await set(roomRef, room);
@@ -1144,318 +1220,324 @@
       state.playerId = playerId;
       state.playerName = playerName;
       saveSession();
+
       subscribeRoom(roomCode);
     }
 
     async function joinRoomAction() {
+      await waitForAuthReady();
+
       const roomCode = sanitizeRoomCode(roomCodeInput.value);
       const playerName = normalizeName(playerNameInput.value);
+
       if (!roomCode) throw new Error("방 코드를 입력하세요.");
       if (!playerName) throw new Error("이름을 입력하세요.");
 
-      const playerId = state.playerId || createId();
+      const roomRef = ref(db, `rooms/${roomCode}`);
 
-      const room = await mutateRoom(roomCode, (room) => {
-        if (room.status !== "waiting") throw new Error("대기방에서만 참가할 수 있습니다.");
-        if (room.players.filter((p) => !p.left).length >= MAX_PLAYERS) throw new Error("최대 4명입니다.");
-        if (room.players.some((p) => p.name === playerName && !p.left)) throw new Error("같은 이름이 이미 있습니다.");
+      let precheckSnap;
+      try {
+        precheckSnap = await get(roomRef);
+      } catch (err) {
+        throw new Error(friendlyFirebaseError(err, "방 조회에 실패했습니다."));
+      }
 
-        const exists = room.players.find((p) => p.id === playerId && !p.left);
-        if (exists) return;
+      if (!precheckSnap.exists()) {
+        throw new Error("해당 방 코드를 찾을 수 없습니다.");
+      }
 
-        room.players.push({
+      const preRoom = precheckSnap.val();
+      if (preRoom.status !== "waiting") {
+        throw new Error("대기방에서만 참가할 수 있습니다.");
+      }
+
+      if (!state.playerId) {
+        state.playerId = createId();
+      }
+
+      const playerId = state.playerId;
+
+      const room = await mutateRoom(roomCode, (roomData) => {
+        if (!roomData) throw new Error("방을 찾을 수 없습니다.");
+        if (roomData.status !== "waiting") throw new Error("대기방에서만 참가할 수 있습니다.");
+
+        const activePlayers = roomData.players.filter((p) => !p.left);
+        if (activePlayers.length >= MAX_PLAYERS) throw new Error("최대 4명입니다.");
+
+        const duplicateName = roomData.players.some((p) => p.name === playerName && !p.left && p.id !== playerId);
+        if (duplicateName) throw new Error("같은 이름이 이미 있습니다.");
+
+        const existing = roomData.players.find((p) => p.id === playerId);
+
+        if (existing && !existing.left) {
+          existing.name = playerName;
+          roomData.lastActionText = `${playerName} 님이 다시 연결되었습니다.`;
+          return;
+        }
+
+        if (existing && existing.left) {
+          existing.left = false;
+          existing.name = playerName;
+          existing.folded = false;
+          existing.allIn = false;
+          existing.broke = existing.stackAmount <= 0;
+          existing.hasActedThisStreet = false;
+          existing.recentAction = "";
+          syncPlayerChips(existing);
+          roomData.lastActionText = `${playerName} 님이 다시 참가했습니다.`;
+          return;
+        }
+
+        roomData.players.push({
           id: playerId,
           name: playerName,
-          stackAmount: room.initialAmount,
-          stackChips: amountToChips(room.initialAmount),
+          stackAmount: roomData.initialAmount,
+          stackChips: amountToChips(roomData.initialAmount),
           betAmount: 0,
           betChips: amountToChips(0),
           committedAmount: 0,
           folded: false,
           allIn: false,
-          broke: room.initialAmount <= 0,
+          broke: roomData.initialAmount <= 0,
           left: false,
           hasActedThisStreet: false,
           recentAction: ""
         });
-        room.lastActionText = `${playerName} 님이 대기방에 참가했습니다.`;
+
+        roomData.lastActionText = `${playerName} 님이 대기방에 참가했습니다.`;
       });
 
-      state.roomCode = room.roomCode;
+      if (!room) {
+        throw new Error("방 참가에 실패했습니다.");
+      }
+
+      state.roomCode = roomCode;
       state.playerId = playerId;
       state.playerName = playerName;
       saveSession();
+
       subscribeRoom(roomCode);
     }
 
+    async function leaveRoomAction() {
+      try {
+        if (state.roomCode && state.playerId) {
+          await mutateRoom(state.roomCode, (room) => {
+            const me = room.players.find((p) => p.id === state.playerId);
+            if (!me) return;
+            me.left = true;
+            me.recentAction = "";
+            room.lastActionText = `${me.name} 님이 방을 나갔습니다.`;
+
+            const active = room.players.filter((p) => !p.left);
+            if (active.length === 0) {
+              return null;
+            }
+
+            if (room.hostPlayerId === state.playerId) {
+              room.hostPlayerId = active[0].id;
+            }
+
+            updateBrokeFlags(room);
+          });
+        }
+      } catch {}
+      leaveRoomLocalOnly();
+    }
+
     function subscribeRoom(roomCode) {
-      if (state.roomUnsub) state.roomUnsub();
+      if (state.roomUnsub) {
+        state.roomUnsub();
+        state.roomUnsub = null;
+      }
 
       const roomRef = ref(db, `rooms/${roomCode}`);
       state.roomUnsub = onValue(roomRef, (snapshot) => {
-        const value = snapshot.val();
-        if (!value) {
-          state.room = null;
-          if (state.roomUnsub) state.roomUnsub();
-          state.roomUnsub = null;
+        if (!snapshot.exists()) {
+          setMessage(authMessage, "방이 삭제되었거나 존재하지 않습니다.");
+          leaveRoomLocalOnly();
           return;
         }
 
-        state.room = roomPublic(value, state.playerId);
+        const room = snapshot.val();
+        state.room = enrichRoom(room);
 
-        const currentSig = JSON.stringify((state.room.sidePots || []).map((p) => ({ i: p.index, a: p.amount })));
-        if (state._lastPotSig && state._lastPotSig !== currentSig && state.room.handPhase !== "settlement") {
-          state.selectedWinnersByPot = {};
+        const stillInRoom = room.players.some((p) => p.id === state.playerId && !p.left);
+        if (!stillInRoom) {
+          setMessage(authMessage, "방에서 제외되었습니다.");
+          leaveRoomLocalOnly();
+          return;
         }
-        state._lastPotSig = currentSig;
 
         renderRoom();
+
+        if (state.room.resultOpen && state.room.resultMessage && state.lastSeenResultMessage !== state.room.resultMessage) {
+          showResultOverlay(state.room.resultMessage);
+        }
+      }, (error) => {
+        setMessage(authMessage, friendlyFirebaseError(error, "방 구독에 실패했습니다."));
       });
     }
 
-    function saveSession() {
-      localStorage.setItem("poker-room-session", JSON.stringify({
-        roomCode: state.roomCode,
-        playerId: state.playerId,
-        playerName: state.playerName
-      }));
-    }
-
-    function clearSession() {
-      localStorage.removeItem("poker-room-session");
-    }
-
-    function showResultOverlay(message) {
-      if (!message) return;
-      resultText.textContent = message;
-      resultOverlay.classList.add("show");
-      state.lastSeenResultMessage = message;
-    }
-
-    function hideResultOverlay() {
-      resultOverlay.classList.remove("show");
-    }
-
-    function openSheet() {
-      if (actionSheet.classList.contains("hidden")) return;
-      state.isSheetOpen = true;
-      actionSheet.classList.add("open");
-      sheetBackdrop.classList.add("show");
-      sheetSubtitle.textContent = "터치해서 닫기";
-    }
-
-    function closeSheet() {
-      state.isSheetOpen = false;
-      actionSheet.classList.remove("open");
-      sheetBackdrop.classList.remove("show");
-      sheetSubtitle.textContent = state.room?.you?.canAct ? "터치해서 열기 · 지금 내 턴" : "터치해서 열기";
-    }
-
-    function toggleSheet() {
-      if (state.isSheetOpen) closeSheet();
-      else openSheet();
+    function renderChipStacks(chips) {
+      return CHIP_META.map((meta) => {
+        const count = Number(chips?.[meta.key] || 0);
+        if (count <= 0) return "";
+        const visible = Math.min(count, 8);
+        const discs = Array.from({ length: visible })
+          .map(() => `<div class="disc ${meta.className}"></div>`)
+          .join("");
+        return `
+          <div class="chip-stack">
+            <div class="discs">${discs}</div>
+            <div class="mini">${meta.value.toLocaleString()}×${count}</div>
+          </div>
+        `;
+      }).join("");
     }
 
     function renderWaitingList() {
-      const visiblePlayers = state.room.players.filter((p) => !p.left);
-      const isHost = !!state.room.you?.isHost;
+      if (!state.room) return;
 
-      waitingList.innerHTML = visiblePlayers.map((player, index) => `
+      const isHost = !!state.room.you?.isHost;
+      const activePlayers = state.room.players.filter((p) => !p.left);
+
+      waitingList.innerHTML = activePlayers.map((player, idx) => `
         <div class="order-item">
           <div>
-            <div style="font-weight:800;">
-              ${index + 1}. ${player.name}
-              ${player.id === state.room.hostPlayerId ? " (딜러)" : ""}
-            </div>
+            <div class="player-name" style="font-size:16px;">${idx + 1}. ${escapeHtml(player.name)}</div>
             <div class="mini">
-              ${player.id === state.room.hostPlayerId ? "호스트" : "참가자"}
-              ${player.broke ? " · Broke" : ""}
+              ${player.id === state.room.hostPlayerId ? "호스트 / 딜러" : "플레이어"}
             </div>
           </div>
           ${isHost ? `
             <div class="row">
-              <button ${index === 0 ? "disabled" : ""} onclick="window.reorderPlayer('${player.id}', 'up')">↑</button>
-              <button ${index === visiblePlayers.length - 1 ? "disabled" : ""} onclick="window.reorderPlayer('${player.id}', 'down')">↓</button>
+              <button class="gray" onclick="reorderPlayer('${player.id}', 'up')">위</button>
+              <button class="gray" onclick="reorderPlayer('${player.id}', 'down')">아래</button>
             </div>
-          ` : ``}
+          ` : ""}
         </div>
       `).join("");
+
+      const enoughPlayers = activePlayers.filter((p) => !p.broke).length >= 2;
+      startGameBtn.disabled = !enoughPlayers;
     }
 
     function renderPlayers() {
-      const currentTurnId = state.room.currentTurnPlayerId;
+      if (!state.room) return;
 
-      playersList.innerHTML = state.room.players.map((player) => `
-        <div class="player-card ${player.id === currentTurnId ? "turn" : ""} ${player.id === state.playerId ? "me" : ""}">
-          <div class="row" style="justify-content:space-between; align-items:center;">
-            <div>
-              <div class="player-name">
-                ${player.name}
-                ${player.id === state.room.hostPlayerId ? "🎩" : ""}
-              </div>
-              <div class="mini">
-                순서 ${state.room.players.findIndex((p) => p.id === player.id) + 1}
-                ${player.id === state.room.hostPlayerId ? " · 호스트" : ""}
-                ${player.id === state.playerId ? " · 나" : ""}
-                ${player.left ? " · 나감" : ""}
-              </div>
+      playersList.innerHTML = state.room.players
+        .filter((p) => !p.left)
+        .map((player, idx) => {
+          const isMe = player.id === state.playerId;
+          const isTurn = state.room.turnIndex === idx && state.room.handPhase === "betting";
+          const tags = [
+            player.id === state.room.hostPlayerId ? `<span class="pill action-pill">딜러</span>` : "",
+            player.folded ? `<span class="pill left-pill">FOLD</span>` : "",
+            player.allIn ? `<span class="pill action-pill">ALL-IN</span>` : "",
+            player.broke ? `<span class="pill broke-pill">BROKE</span>` : "",
+            player.recentAction ? `<span class="pill">${escapeHtml(player.recentAction)}</span>` : "",
+            isMe ? `<span class="pill" style="background:#14532d;">나</span>` : ""
+          ].filter(Boolean).join("");
+
+          return `
+            <div class="player-card ${isMe ? "me" : ""} ${isTurn ? "turn" : ""}">
+              <div class="player-name">${escapeHtml(player.name)}</div>
+              <div class="mini">보유금 ${formatMoney(player.stackAmount)} · 베팅 ${formatMoney(player.betAmount)}</div>
+              <div class="amount-tags">${tags}</div>
+
+              <div class="mini">스택 칩</div>
+              <div class="stack-view">${renderChipStacks(player.stackChips)}</div>
+
+              <div class="mini" style="margin-top:12px;">테이블 칩</div>
+              <div class="stack-view">${renderChipStacks(player.betChips)}</div>
             </div>
-            <div class="row">
-              ${player.id === currentTurnId ? `<div class="pill">현재 턴</div>` : ""}
-              ${player.id !== currentTurnId && player.recentAction ? `<div class="pill action-pill">${player.recentAction}</div>` : ""}
-              ${player.broke ? `<div class="pill broke-pill">Broke</div>` : ""}
-              ${player.left ? `<div class="pill left-pill">LEFT</div>` : ""}
-              ${player.folded ? `<div class="pill">Fold</div>` : ""}
-              ${player.allIn ? `<div class="pill">All-in</div>` : ""}
-            </div>
-          </div>
-
-          <div class="amount-tags">
-            <div class="amount-tag">보유 ${formatMoney(player.stackAmount)}</div>
-            <div class="amount-tag">현재 베팅 ${formatMoney(player.betAmount)}</div>
-            <div class="amount-tag">총 투입 ${formatMoney(player.committedAmount + player.betAmount)}</div>
-          </div>
-
-          <div class="mini">현재 베팅 칩</div>
-          <div class="stack-view">${chipStackHtml(player.betChips)}</div>
-        </div>
-      `).join("");
-    }
-
-    function chipStackHtml(chips) {
-      const active = CHIP_META.filter(c => Number(chips?.[c.key] || 0) > 0);
-      if (active.length === 0) return `<div class="mini">칩 없음</div>`;
-
-      return active.map(chip => {
-        const count = Number(chips[chip.key] || 0);
-        const visible = Math.min(count, 5);
-        let discs = "";
-        for (let i = 0; i < visible; i++) discs += `<div class="disc ${chip.className}"></div>`;
-        return `
-          <div class="chip-stack">
-            <div class="discs">${discs}</div>
-            <div class="mini">${chip.value}</div>
-            <div class="mini">x ${count}</div>
-          </div>
-        `;
-      }).join("");
+          `;
+        })
+        .join("");
     }
 
     function renderActionSheet() {
-      const hasYou = !!state.room?.you;
-      const isPlaying = state.room?.status === "playing";
-      const me = state.room?.players.find(p => p.id === state.playerId);
-      const canAct = !!state.room?.you?.canAct;
+      if (!state.room || !state.room.you) return;
 
-      actionSheet.classList.toggle("hidden", !(hasYou && isPlaying));
-
-      if (!hasYou || !isPlaying || !me) {
-        closeSheet();
-        return;
-      }
+      const canAct = !!state.room.you.canAct;
+      actionSheet.classList.toggle("hidden", !canAct && !state.isSheetOpen);
 
       myStatusPills.innerHTML = `
-        <div class="sheet-pill">보유 ${formatMoney(me.stackAmount)}</div>
-        <div class="sheet-pill">내 현재 베팅 ${formatMoney(me.betAmount)}</div>
-        <div class="sheet-pill">맞춰야 할 금액 ${formatMoney(state.room.you.toCall)}</div>
-        <div class="sheet-pill">${canAct ? "지금 내 턴" : "대기 중"}</div>
+        <span class="pill">보유 ${formatMoney(state.room.you.stackAmount)}</span>
+        <span class="pill">현재 베팅 ${formatMoney(state.room.you.betAmount)}</span>
+        <span class="pill">콜 ${formatMoney(state.room.you.toCall)}</span>
       `;
 
+      sheetSubtitle.textContent = canAct ? "지금은 내 턴입니다." : "내 턴이 아닙니다.";
+
       checkCallBtn.disabled = !canAct;
+      betRaiseBtn.disabled = !canAct;
       allInBtn.disabled = !canAct;
       foldBtn.disabled = !canAct;
-      betRaiseBtn.disabled = !canAct;
-
-      if (!state.isSheetOpen) {
-        sheetSubtitle.textContent = canAct ? "터치해서 열기 · 지금 내 턴" : "터치해서 열기";
-      }
-    }
-
-    function cleanupSelectedWinners() {
-      if (!state.room?.sidePots) return;
-      const next = {};
-      state.room.sidePots.forEach((pot) => {
-        const current = state.selectedWinnersByPot[pot.index] || [];
-        next[pot.index] = current.filter((id) => pot.eligiblePlayerIds.includes(id));
-      });
-      state.selectedWinnersByPot = next;
-    }
-
-    function toggleWinnerForPot(potIndex, playerId) {
-      const current = state.selectedWinnersByPot[potIndex] || [];
-      const set = new Set(current);
-      if (set.has(playerId)) set.delete(playerId);
-      else set.add(playerId);
-      state.selectedWinnersByPot[potIndex] = [...set];
-      renderSidePots();
     }
 
     function renderSidePots() {
-      cleanupSelectedWinners();
+      if (!state.room) return;
 
-      const sidePots = state.room.sidePots || [];
-      const isSettlement = state.room.handPhase === "settlement";
+      const sidePots = computeSidePots(state.room);
+      sidePotContainer.innerHTML = "";
 
       if (sidePots.length === 0) {
-        sidePotContainer.innerHTML = `<div class="mini">현재 생성된 사이드팟이 없습니다.</div>`;
+        sidePotContainer.innerHTML = `<div class="mini">사이드팟이 없습니다.</div>`;
         return;
       }
 
-      sidePotContainer.innerHTML = sidePots.map((pot) => {
+      const canSelect = state.room.handPhase === "settlement";
+
+      sidePots.forEach((pot) => {
         const selected = state.selectedWinnersByPot[pot.index] || [];
-        return `
-          <div class="sidepot-box">
-            <div class="sidepot-title">${pot.index + 1}번 팟 · ${formatMoney(pot.amount)}</div>
-            <div class="mini">선택 가능: ${pot.eligiblePlayers.map(p => p.name).join(", ")}</div>
-            <div class="winner-list">
-              ${pot.eligiblePlayers.map((player) => `
-                <div class="winner-row ${selected.includes(player.id) ? "selected" : ""}" data-pot-index="${pot.index}" data-player-id="${player.id}">
-                  <div class="check-ui"></div>
-                  <div>
-                    <div style="font-weight:800;">${player.name}</div>
-                    <div class="mini">이 팟의 승자로 선택</div>
-                  </div>
-                </div>
-              `).join("")}
-            </div>
+        const wrapper = document.createElement("div");
+        wrapper.className = "sidepot-box";
+
+        wrapper.innerHTML = `
+          <div class="sidepot-title">${pot.index + 1}번 팟 · ${formatMoney(pot.amount)}</div>
+          <div class="mini">승자를 선택하세요.</div>
+          <div class="winner-list">
+            ${pot.eligiblePlayers.map((player) => `
+              <div class="winner-row ${selected.includes(player.id) ? "selected" : ""}" data-pot-index="${pot.index}" data-player-id="${player.id}">
+                <div class="check-ui"></div>
+                <div>${escapeHtml(player.name)}</div>
+              </div>
+            `).join("")}
           </div>
         `;
-      }).join("");
 
-      sidePotContainer.querySelectorAll(".winner-row").forEach((row) => {
-        row.addEventListener("click", () => {
-          if (!isSettlement) return;
-          toggleWinnerForPot(Number(row.dataset.potIndex), row.dataset.playerId);
-        });
+        sidePotContainer.appendChild(wrapper);
       });
+
+      if (canSelect) {
+        sidePotContainer.querySelectorAll(".winner-row").forEach((row) => {
+          row.addEventListener("click", () => {
+            const potIndex = Number(row.dataset.potIndex);
+            const playerId = row.dataset.playerId;
+
+            const selected = new Set(state.selectedWinnersByPot[potIndex] || []);
+            if (selected.has(playerId)) selected.delete(playerId);
+            else selected.add(playerId);
+
+            state.selectedWinnersByPot[potIndex] = [...selected];
+            renderSidePots();
+          });
+        });
+      }
     }
 
     function renderRechargePanel() {
-      const isHost = !!state.room.you?.isHost;
-      const brokePlayers = state.room.players.filter(p => p.broke && !p.left);
+      if (!state.room) return;
 
-      rechargeBox.classList.toggle("hidden", !(isHost && brokePlayers.length > 0));
-
-      if (!isHost || brokePlayers.length === 0) {
-        state.selectedRechargePlayerId = "";
-        rechargeList.innerHTML = "";
-        rechargeBtn.disabled = true;
-        return;
-      }
-
-      if (!brokePlayers.some(p => p.id === state.selectedRechargePlayerId)) {
-        state.selectedRechargePlayerId = "";
-      }
-
-      const amount = Math.max(10, Math.floor(state.room.initialAmount / 10 / 10) * 10);
+      const brokePlayers = state.room.players.filter((p) => !p.left && p.broke);
+      rechargeBox.classList.toggle("hidden", brokePlayers.length === 0);
 
       rechargeList.innerHTML = brokePlayers.map((player) => `
         <div class="recharge-row ${state.selectedRechargePlayerId === player.id ? "selected" : ""}" data-player-id="${player.id}">
           <div class="check-ui"></div>
-          <div>
-            <div style="font-weight:800;">${player.name}</div>
-            <div class="mini">충전 금액 ${formatMoney(amount)}</div>
-          </div>
+          <div>${escapeHtml(player.name)}</div>
         </div>
       `).join("");
 
@@ -1509,10 +1591,58 @@
       } else {
         closeSheet();
       }
+    }
 
-      if (state.room.resultOpen && state.room.resultMessage && state.lastSeenResultMessage !== state.room.resultMessage) {
-        showResultOverlay(state.room.resultMessage);
+    function renderAuthReadyState() {
+      createRoomBtn.disabled = !state.authReady;
+      joinRoomBtn.disabled = !state.authReady;
+      if (!state.authReady) {
+        setMessage(authMessage, "Firebase 인증 연결 중...");
+      } else {
+        if (authMessage.textContent === "Firebase 인증 연결 중...") {
+          setMessage(authMessage, "");
+        }
       }
+    }
+
+    function showResultOverlay(message) {
+      state.lastSeenResultMessage = message;
+      resultText.textContent = message;
+      resultOverlay.classList.add("show");
+    }
+
+    function hideResultOverlay() {
+      resultOverlay.classList.remove("show");
+    }
+
+    function openSheet() {
+      state.isSheetOpen = true;
+      actionSheet.classList.remove("hidden");
+      actionSheet.classList.add("open");
+      sheetBackdrop.classList.add("show");
+    }
+
+    function closeSheet() {
+      state.isSheetOpen = false;
+      actionSheet.classList.remove("open");
+      sheetBackdrop.classList.remove("show");
+      if (!state.room?.you?.canAct) {
+        actionSheet.classList.add("hidden");
+      }
+    }
+
+    function toggleSheet() {
+      if (state.isSheetOpen) closeSheet();
+      else openSheet();
+    }
+
+    function escapeHtml(value = "") {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
     }
 
     async function createRoomHandler() {
@@ -1539,11 +1669,16 @@
           if (room.status !== "waiting") throw new Error("대기방에서만 가능합니다.");
           if (room.hostPlayerId !== state.playerId) throw new Error("호스트만 가능합니다.");
 
-          const idx = room.players.findIndex((p) => p.id === targetPlayerId);
+          const idx = room.players.findIndex((p) => p.id === targetPlayerId && !p.left);
           if (idx === -1) throw new Error("플레이어를 찾을 수 없습니다.");
-          const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-          if (swapIdx < 0 || swapIdx >= room.players.length) return;
 
+          const activeIndexes = room.players.map((p, i) => (!p.left ? i : -1)).filter((i) => i >= 0);
+          const activePos = activeIndexes.indexOf(idx);
+          const swapPos = direction === "up" ? activePos - 1 : activePos + 1;
+
+          if (swapPos < 0 || swapPos >= activeIndexes.length) return;
+
+          const swapIdx = activeIndexes[swapPos];
           [room.players[idx], room.players[swapIdx]] = [room.players[swapIdx], room.players[idx]];
           room.lastActionText = "순서가 변경되었습니다.";
         });
@@ -1595,114 +1730,13 @@
     async function startGameHandler() {
       try {
         await mutateRoom(state.roomCode, (room) => {
-          if (room.status !== "waiting") throw new Error("대기방에서만 가능합니다.");
+          if (room.status !== "waiting") throw new Error("이미 게임 중입니다.");
           if (room.hostPlayerId !== state.playerId) throw new Error("호스트만 가능합니다.");
-          room.players = room.players.filter((p) => !p.left);
-          updateBrokeFlags(room);
-          if (playablePlayers(room).length < 2) throw new Error("플레이 가능한 유저가 최소 2명 필요합니다.");
-          if (room.initialAmount <= 0) throw new Error("초기 금액을 먼저 설정하세요.");
           setupNewHand(room);
         });
-        state.selectedWinnersByPot = {};
-        state.selectedRechargePlayerId = "";
-        state.lastSeenResultMessage = "";
+        setMessage(waitingMessage, "게임을 시작했습니다.", true);
       } catch (err) {
         setMessage(waitingMessage, err.message);
-      }
-    }
-
-    async function startNextHandHandler() {
-      try {
-        await mutateRoom(state.roomCode, (room) => {
-          if (room.hostPlayerId !== state.playerId) throw new Error("호스트만 가능합니다.");
-          updateBrokeFlags(room);
-          if (playablePlayers(room).length < 2) throw new Error("플레이 가능한 유저가 최소 2명 필요합니다.");
-          setupNewHand(room);
-        });
-        state.selectedWinnersByPot = {};
-        state.selectedRechargePlayerId = "";
-        hideResultOverlay();
-        setMessage(hostSettleMessage, "새 판을 시작했습니다.", true);
-      } catch (err) {
-        setMessage(hostSettleMessage, err.message);
-      }
-    }
-
-    async function rechargeBrokeHandler() {
-      try {
-        await mutateRoom(state.roomCode, (room) => {
-          if (room.hostPlayerId !== state.playerId) throw new Error("호스트만 가능합니다.");
-          const target = room.players.find((p) => p.id === state.selectedRechargePlayerId);
-          if (!target) throw new Error("플레이어를 찾을 수 없습니다.");
-          updateBrokeFlags(room);
-          if (!target.broke) throw new Error("파산 유저만 충전할 수 있습니다.");
-
-          const amount = Math.max(10, Math.floor(room.initialAmount / 10 / 10) * 10);
-          target.stackAmount += amount;
-          target.broke = false;
-          target.folded = false;
-          target.allIn = false;
-          target.hasActedThisStreet = false;
-          syncPlayerChips(target);
-          room.lastActionText = `${target.name} 님에게 ${amount.toLocaleString()}원을 충전했습니다.`;
-        });
-        setMessage(hostSettleMessage, "칩을 충전했습니다.", true);
-      } catch (err) {
-        setMessage(hostSettleMessage, err.message);
-      }
-    }
-
-    async function leaveRoomHandler() {
-      try {
-        await mutateRoom(state.roomCode, (room) => {
-          const idx = room.players.findIndex((p) => p.id === state.playerId);
-          if (idx === -1) throw new Error("플레이어를 찾을 수 없습니다.");
-
-          const leaving = room.players[idx];
-
-          if (room.status === "waiting") {
-            room.players.splice(idx, 1);
-            if (room.players.length === 0) return null;
-            if (room.hostPlayerId === leaving.id) room.hostPlayerId = room.players[0].id;
-            room.lastActionText = `${leaving.name} 님이 대기방을 나갔습니다.`;
-            return;
-          }
-
-          leaving.left = true;
-          leaving.folded = true;
-          leaving.hasActedThisStreet = true;
-          leaving.recentAction = "LEFT";
-
-          if (room.hostPlayerId === leaving.id) {
-            const nextHost = room.players.find((p) => !p.left);
-            if (nextHost) room.hostPlayerId = nextHost.id;
-          }
-
-          updateBrokeFlags(room);
-          if (playablePlayers(room).length < 2) {
-            room.status = "waiting";
-            resetBetweenHandsState(room);
-            room.resultMessage = "";
-            room.resultOpen = false;
-            room.lastActionText = `${leaving.name} 님이 나가서 대기방으로 돌아갔습니다.`;
-            room.players = room.players.filter((p) => !p.left);
-            return;
-          }
-
-          if (room.turnIndex === idx) {
-            room.turnIndex = findNextTurnIndex(room, idx);
-          }
-
-          if (autoAwardFoldWin(room)) return;
-          if (maybeAllInSettlement(room)) return;
-
-          room.lastActionText = `${leaving.name} 님이 게임에서 나갔습니다.`;
-        });
-
-        clearSession();
-        location.reload();
-      } catch (err) {
-        setMessage(authMessage, err.message);
       }
     }
 
@@ -1713,20 +1747,20 @@
           const actorIndex = room.turnIndex;
           const toCall = Math.max(0, room.currentBet - player.betAmount);
 
-          if (toCall === 0) {
+          if (toCall > 0) {
+            if (player.stackAmount < toCall) {
+              throw new Error("콜할 금액이 부족합니다. 올인을 사용하세요.");
+            }
+            player.stackAmount -= toCall;
+            player.betAmount += toCall;
+            player.hasActedThisStreet = true;
+            syncPlayerChips(player);
+            setRecentAction(room, player.id, "CALL");
+            room.lastActionText = `${player.name}: Call ${toCall.toLocaleString()}`;
+          } else {
             player.hasActedThisStreet = true;
             setRecentAction(room, player.id, "CHECK");
             room.lastActionText = `${player.name}: Check`;
-          } else {
-            const moved = Math.min(player.stackAmount, toCall);
-            if (moved <= 0) throw new Error("콜할 수 있는 금액이 없습니다.");
-            player.stackAmount -= moved;
-            player.betAmount += moved;
-            player.hasActedThisStreet = true;
-            if (player.stackAmount === 0) player.allIn = true;
-            syncPlayerChips(player);
-            setRecentAction(room, player.id, "CALL");
-            room.lastActionText = `${player.name}: Call ${moved.toLocaleString()}`;
           }
 
           evaluateGameFlowAfterAction(room, actorIndex);
@@ -1743,35 +1777,33 @@
         await mutateRoom(state.roomCode, (room) => {
           const player = ensureTurnPlayer(room, state.playerId);
           const actorIndex = room.turnIndex;
-          const beforeCurrentBet = room.currentBet;
-          const targetBet = validateMoney(targetBetInput.value);
+          const targetTotalBet = validateMoney(targetBetInput.value);
 
-          if (targetBet <= player.betAmount) throw new Error("입력한 총 베팅 금액이 현재 내 베팅보다 커야 합니다.");
-          if (beforeCurrentBet === 0) {
-            if (targetBet <= 0) throw new Error("Bet 금액이 올바르지 않습니다.");
-          } else if (targetBet <= beforeCurrentBet) {
-            throw new Error("Raise는 현재 최고 베팅보다 커야 합니다.");
+          if (targetTotalBet <= room.currentBet) {
+            throw new Error("Raise 후 총 베팅 금액은 현재 베팅보다 커야 합니다.");
           }
 
-          const diff = targetBet - player.betAmount;
-          if (diff > player.stackAmount) throw new Error("보유 금액이 부족합니다. 부족하면 All-in을 사용하세요.");
+          const addAmount = targetTotalBet - player.betAmount;
+          if (addAmount <= 0) {
+            throw new Error("추가 베팅 금액이 없습니다.");
+          }
+          if (player.stackAmount < addAmount) {
+            throw new Error("보유 금액이 부족합니다.");
+          }
 
-          player.stackAmount -= diff;
-          player.betAmount = targetBet;
+          player.stackAmount -= addAmount;
+          player.betAmount = targetTotalBet;
           player.hasActedThisStreet = true;
-          if (player.stackAmount === 0) player.allIn = true;
+          room.currentBet = targetTotalBet;
           syncPlayerChips(player);
-
-          room.currentBet = targetBet;
           resetOtherPlayersActed(room, player.id);
-          setRecentAction(room, player.id, beforeCurrentBet === 0 ? "BET" : "RAISE");
-          room.lastActionText =
-            beforeCurrentBet === 0
-              ? `${player.name}: Bet ${targetBet.toLocaleString()}`
-              : `${player.name}: Raise ${targetBet.toLocaleString()}`;
+
+          setRecentAction(room, player.id, "RAISE");
+          room.lastActionText = `${player.name}: Raise → 총 ${targetTotalBet.toLocaleString()}`;
 
           evaluateGameFlowAfterAction(room, actorIndex);
         });
+
         targetBetInput.value = "";
         setMessage(myActionMessage, "");
         closeSheet();
@@ -1852,6 +1884,7 @@
           for (const pot of sidePots) {
             const winnerIds = state.selectedWinnersByPot[pot.index] || [];
             if (winnerIds.length === 0) throw new Error(`${pot.index + 1}번 팟의 승자를 선택하세요.`);
+
             const invalid = winnerIds.some((id) => !pot.eligiblePlayerIds.includes(id));
             if (invalid) throw new Error(`${pot.index + 1}번 팟에 선택할 수 없는 승자가 있습니다.`);
 
@@ -1859,44 +1892,96 @@
             const share = Math.floor(pot.amount / winners.length);
             let remainder = pot.amount - share * winners.length;
 
-            for (const winner of winners) {
-              winner.stackAmount += share;
-              payoutMap.set(winner.id, {
-                name: winner.name,
-                amount: (payoutMap.get(winner.id)?.amount || 0) + share
-              });
-            }
-
-            if (remainder > 0) {
-              winners[0].stackAmount += remainder;
-              payoutMap.set(winners[0].id, {
-                name: winners[0].name,
-                amount: (payoutMap.get(winners[0].id)?.amount || 0) + remainder
-              });
-            }
+            winners.forEach((winner) => {
+              const extra = remainder > 0 ? 1 : 0;
+              remainder -= extra;
+              const prev = payoutMap.get(winner.id) || { name: winner.name, amount: 0 };
+              prev.amount += share + extra;
+              payoutMap.set(winner.id, prev);
+            });
           }
 
-            const payoutLines = [...payoutMap.values()]
+          room.players.forEach((p) => {
+            const payout = payoutMap.get(p.id);
+            if (payout) p.stackAmount += payout.amount;
+            p.betAmount = 0;
+            p.committedAmount = 0;
+            p.folded = false;
+            p.allIn = false;
+            p.hasActedThisStreet = false;
+            p.recentAction = "";
+            syncPlayerChips(p);
+          });
+
+          room.potAmount = 0;
+          room.currentBet = 0;
+          room.currentStreet = 0;
+          room.turnIndex = -1;
+          room.handPhase = "settled";
+          room.settlementReason = "";
+          room.resultOpen = true;
+          room.resultMessage = [...payoutMap.values()]
             .filter((x) => x.amount > 0)
             .map((x) => `${x.name} 님이 ${x.amount.toLocaleString()}원을 가져갔습니다.`)
             .join("\n");
+          room.lastActionText = room.resultMessage || "정산이 완료되었습니다.";
 
-          finalizeSettled(room, room.settlementReason || "showdown", payoutLines || "정산 완료");
+          updateBrokeFlags(room);
+          maybeChampionWin(room);
         });
 
         state.selectedWinnersByPot = {};
-        setMessage(hostSettleMessage, "정산을 완료했습니다. 필요하면 Broke 유저를 충전하고 새 판을 시작하세요.", true);
+        setMessage(hostSettleMessage, "정산을 완료했습니다.", true);
       } catch (err) {
         setMessage(hostSettleMessage, err.message);
       }
     }
 
-    async function copyLink() {
+    async function startNextHandHandler() {
       try {
-        await navigator.clipboard.writeText(shareLink.textContent);
-        setMessage(lastActionBox, "링크를 복사했습니다.", true);
+        await mutateRoom(state.roomCode, (room) => {
+          if (room.hostPlayerId !== state.playerId) throw new Error("호스트만 가능합니다.");
+          if (room.handPhase !== "settled") throw new Error("아직 이전 판이 끝나지 않았습니다.");
+          setupNewHand(room, "새 판이 시작되었습니다.");
+        });
+        setMessage(hostSettleMessage, "새 판을 시작했습니다.", true);
+      } catch (err) {
+        setMessage(hostSettleMessage, err.message);
+      }
+    }
+
+    async function rechargeHandler() {
+      try {
+        await mutateRoom(state.roomCode, (room) => {
+          if (room.hostPlayerId !== state.playerId) throw new Error("호스트만 가능합니다.");
+          if (!state.selectedRechargePlayerId) throw new Error("충전할 플레이어를 선택하세요.");
+
+          const player = room.players.find((p) => p.id === state.selectedRechargePlayerId && !p.left);
+          if (!player) throw new Error("플레이어를 찾을 수 없습니다.");
+
+          const rechargeAmount = Math.max(10, Math.floor(room.initialAmount / 10 / 10) * 10);
+          player.stackAmount = rechargeAmount;
+          player.broke = false;
+          player.folded = false;
+          player.allIn = false;
+          syncPlayerChips(player);
+
+          room.lastActionText = `${player.name} 님이 ${rechargeAmount.toLocaleString()}원으로 충전되었습니다.`;
+        });
+
+        state.selectedRechargePlayerId = "";
+        setMessage(hostSettleMessage, "충전했습니다.", true);
+      } catch (err) {
+        setMessage(hostSettleMessage, err.message);
+      }
+    }
+
+    async function copyLinkHandler() {
+      try {
+        await navigator.clipboard.writeText(`${location.origin}${location.pathname}?room=${state.room?.roomCode || ""}`);
+        setMessage(authMessage, "링크를 복사했습니다.", true);
       } catch {
-        setMessage(lastActionBox, "링크 복사에 실패했습니다.");
+        setMessage(authMessage, "링크 복사에 실패했습니다.");
       }
     }
 
@@ -1904,16 +1989,16 @@
     joinRoomBtn.addEventListener("click", joinRoomHandler);
     applyInitialAmountBtn.addEventListener("click", applyInitialAmountHandler);
     startGameBtn.addEventListener("click", startGameHandler);
-    startNextHandBtn.addEventListener("click", startNextHandHandler);
-    rechargeBtn.addEventListener("click", rechargeBrokeHandler);
-    leaveRoomBtn.addEventListener("click", leaveRoomHandler);
-    copyLinkBtn.addEventListener("click", copyLink);
+    leaveRoomBtn.addEventListener("click", leaveRoomAction);
+    copyLinkBtn.addEventListener("click", copyLinkHandler);
 
     checkCallBtn.addEventListener("click", checkCallHandler);
     betRaiseBtn.addEventListener("click", betRaiseHandler);
     foldBtn.addEventListener("click", foldHandler);
     allInBtn.addEventListener("click", allInHandler);
     settlePotBtn.addEventListener("click", settlePotHandler);
+    startNextHandBtn.addEventListener("click", startNextHandHandler);
+    rechargeBtn.addEventListener("click", rechargeHandler);
 
     sheetHandleArea.addEventListener("click", toggleSheet);
     closeSheetBtn.addEventListener("click", closeSheet);
@@ -1922,53 +2007,44 @@
 
     window.reorderPlayer = reorderPlayerHandler;
 
-    function renderAuthReadyState() {
-      createRoomBtn.disabled = !state.authReady;
-      joinRoomBtn.disabled = !state.authReady;
-      if (!state.authReady) {
-        setMessage(authMessage, "Firebase 인증 연결 중...");
-      } else {
-        if (authMessage.textContent === "Firebase 인증 연결 중...") setMessage(authMessage, "");
-      }
-    }
-
-    function initSession() {
-      try {
-        const raw = localStorage.getItem("poker-room-session");
-        if (!raw) return;
-        const parsed = JSON.parse(raw);
-        state.roomCode = parsed.roomCode || "";
-        state.playerId = parsed.playerId || "";
-        state.playerName = parsed.playerName || "";
-        if (state.playerName) playerNameInput.value = state.playerName;
-        if (state.roomCode) roomCodeInput.value = state.roomCode;
-      } catch {}
-    }
-
-    function initQueryRoom() {
-      const params = new URLSearchParams(location.search);
-      const room = sanitizeRoomCode(params.get("room") || "");
-      if (room) roomCodeInput.value = room;
-    }
-
     onAuthStateChanged(auth, async (user) => {
       if (!user) return;
+
       state.authReady = true;
+      state.authUserReady = true;
       renderAuthReadyState();
 
       initSession();
       initQueryRoom();
 
       if (state.roomCode && state.playerId) {
-        subscribeRoom(state.roomCode);
+        const code = sanitizeRoomCode(state.roomCode);
+        if (code) {
+          try {
+            const snap = await get(ref(db, `rooms/${code}`));
+            if (snap.exists()) {
+              const room = snap.val();
+              const me = room.players?.find((p) => p.id === state.playerId && !p.left);
+              if (me) {
+                subscribeRoom(code);
+              } else {
+                clearSession();
+              }
+            } else {
+              clearSession();
+            }
+          } catch {
+            clearSession();
+          }
+        }
       }
     });
 
     signInAnonymously(auth).catch((err) => {
-      setMessage(authMessage, `Firebase 익명 로그인 실패: ${err.message}`);
+      setMessage(authMessage, `Firebase 익명 로그인 실패: ${friendlyFirebaseError(err, err.message)}`);
     });
 
     renderAuthReadyState();
   </script>
 </body>
-</html>
+  </html>

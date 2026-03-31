@@ -1063,63 +1063,47 @@
     }
 
     async function createRoomAction() {
-      const playerName = normalizeName(playerNameInput.value);
-      if (!playerName) throw new Error("이름을 입력하세요.");
+    const playerName = normalizeName(playerNameInput.value);
+    if (!playerName) throw new Error("이름을 입력하세요.");
 
-      let roomCode = "";
-      for (let i = 0; i < 20; i++) {
-        const candidate = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(2, 8);
-        const roomRef = ref(db, `rooms/${candidate}`);
-        const snap = await get(roomRef);
+    let roomCode = "";
+    let roomRef = null; // 1. 변수를 밖에서 미리 선언합니다.
+
+    for (let i = 0; i < 5; i++) {
+        const candidate = Math.random().toString(36).toUpperCase().slice(2, 8);
+        const candidateRef = ref(db, `rooms/${candidate}`); // 임시 변수 사용
+        const snap = await get(candidateRef);
         if (!snap.exists()) {
-          roomCode = candidate;
-          break;
+        roomCode = candidate;
+        roomRef = candidateRef; // 2. 찾은 참조를 저장합니다.
+        break;
         }
-      }
-      if (!roomCode) throw new Error("방 코드를 생성하지 못했습니다.");
+    }
 
-      const playerId = createId();
-      const room = {
+    if (!roomCode || !roomRef) throw new Error("방 코드를 생성하지 못했습니다.");
+
+    const playerId = createId();
+    const room = {
         roomCode,
         status: "waiting",
-        handPhase: "settled",
-        settlementReason: "",
-        hostPlayerId: playerId,
-        initialAmount: 0,
-        potAmount: 0,
-        currentBet: 0,
-        currentStreet: 0,
-        turnIndex: -1,
-        lastActionText: "대기방이 생성되었습니다.",
-        resultMessage: "",
-        resultOpen: false,
-        updatedAt: Date.now(),
-        createdAt: Date.now(),
+        // ... (기존 방 데이터 객체 내용)
         players: [
-          {
+        {
             id: playerId,
             name: playerName,
-            stackAmount: 0,
-            stackChips: amountToChips(0),
-            betAmount: 0,
-            betChips: amountToChips(0),
-            committedAmount: 0,
-            folded: false,
-            allIn: false,
-            broke: false,
-            left: false,
-            hasActedThisStreet: false,
-            recentAction: ""
-          }
+            // ...
+        }
         ]
-      };
+    };
 
-      await set(roomRef, room);
-      state.roomCode = roomCode;
-      state.playerId = playerId;
-      state.playerName = playerName;
-      saveSession();
-      subscribeRoom(roomCode);
+    // 3. 이제 밖에서도 roomRef를 사용할 수 있습니다.
+    await set(roomRef, room); 
+    
+    state.roomCode = roomCode;
+    state.playerId = playerId;
+    state.playerName = playerName;
+    saveSession();
+    subscribeRoom(roomCode);
     }
 
     async function joinRoomAction() {

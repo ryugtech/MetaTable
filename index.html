@@ -83,14 +83,6 @@
       color: white;
       border: 1px solid rgba(255,255,255,0.12);
     }
-    .left-pill {
-      background: #6b7280;
-      color: white;
-    }
-    .broke-pill {
-      background: #dc2626;
-      color: white;
-    }
     .dealer-pill {
       background: linear-gradient(135deg, #f59e0b, #facc15);
       color: #111827;
@@ -168,7 +160,6 @@
     }
     .player-name { font-size: 18px; font-weight: 800; }
     .mini { font-size: 12px; color: #94a3b8; }
-
     .name-row {
       display: flex;
       align-items: center;
@@ -456,12 +447,17 @@
 
       <div id="waitingPanel" class="card hidden">
         <div class="title" style="font-size:20px;">대기방</div>
-        <div class="subtitle">호스트가 초기 금액과 순서를 정한 뒤 시작합니다.</div>
+        <div class="subtitle">호스트가 초기 금액, 블라인드, 순서를 정한 뒤 시작합니다.</div>
 
         <div id="hostWaitingControls" class="hidden">
           <div class="row" style="margin-bottom:12px;">
             <input id="initialAmountInput" class="grow" type="number" min="10" step="10" placeholder="초기 금액 예: 5000" />
-            <button id="applyInitialAmountBtn" class="primary">적용</button>
+            <button id="applyInitialAmountBtn" class="primary">초기 금액 적용</button>
+          </div>
+          <div class="row" style="margin-bottom:12px;">
+            <input id="smallBlindInput" class="grow" type="number" min="10" step="10" placeholder="스몰 블라인드 예: 10" />
+            <input id="bigBlindInput" class="grow" type="number" min="10" step="10" placeholder="빅 블라인드 예: 20" />
+            <button id="applyBlindBtn" class="orange">블라인드 적용</button>
           </div>
           <div class="row">
             <button id="startGameBtn" class="green grow">게임 시작</button>
@@ -620,6 +616,9 @@
     const hostWaitingControls = document.getElementById("hostWaitingControls");
     const initialAmountInput = document.getElementById("initialAmountInput");
     const applyInitialAmountBtn = document.getElementById("applyInitialAmountBtn");
+    const smallBlindInput = document.getElementById("smallBlindInput");
+    const bigBlindInput = document.getElementById("bigBlindInput");
+    const applyBlindBtn = document.getElementById("applyBlindBtn");
     const startGameBtn = document.getElementById("startGameBtn");
     const waitingList = document.getElementById("waitingList");
     const waitingMessage = document.getElementById("waitingMessage");
@@ -707,12 +706,6 @@
       room.players.forEach((p) => { p.recentAction = ""; });
     }
 
-    function setRecentAction(room, playerId, text) {
-      clearRecentActions(room);
-      const target = room.players.find((p) => p.id === playerId);
-      if (target) target.recentAction = text;
-    }
-
     function effectiveCommitted(player) {
       return Number(player.committedAmount || 0) + Number(player.betAmount || 0);
     }
@@ -737,6 +730,10 @@
 
     function actablePlayers(room) {
       return room.players.filter((p) => !p.left && !p.folded && !p.broke && !p.allIn);
+    }
+
+    function blindEligiblePlayers(room) {
+      return room.players.filter((p) => !p.left && !p.broke);
     }
 
     function findNextTurnIndex(room, fromIndex) {
@@ -768,6 +765,21 @@
       return -1;
     }
 
+    function findNextPlayableFromIndex(room, startIndex, includeSelf = false) {
+      if (room.players.length === 0) return -1;
+
+      const total = room.players.length;
+      const begin = includeSelf ? 0 : 1;
+
+      for (let step = begin; step < total + begin; step++) {
+        const idx = (startIndex + step + total) % total;
+        const p = room.players[idx];
+        if (!p.left && !p.broke) return idx;
+      }
+
+      return -1;
+    }
+
     function getDealerPlayer(room) {
       return room.players.find((p) => p.id === room.dealerPlayerId && !p.left) || null;
     }
@@ -787,6 +799,42 @@
       const dealerIndex = room.players.findIndex((p) => p.id === room.dealerPlayerId);
       if (dealerIndex === -1) return findFirstActableIndex(room);
       return findNextActableFromIndex(room, dealerIndex, true);
+    }
+
+    function postBlind(player, amount) {
+      const blind = Math.min(player.stackAmount, amount);
+      player.stackAmount -= blind;
+      player.betAmount += blind;
+      if (player.stackAmount === 0 && blind > 0) player.allIn = true;
+      syncPlayerChips(player);
+      return blind;
+    }
+
+    function assignBlinds(room) {
+      const eligible = blindEligiblePlayers(room);
+      if (eligible.length < 2) {
+        room.smallBlindPlayerId = "";
+        room.bigBlindPlayerId = "";
+        room.currentBet = 0;
+        return;
+      }
+
+      const dealerIndex = room.players.findIndex((p) => p.id === room.dealerPlayerId);
+      const sbIndex = findNextPlayableFromIndex(room, dealerIndex, false);
+      const bbIndex = findNextPlayableFromIndex(room, sbIndex, false);
+
+      const sbPlayer = room.players[sbIndex];
+      const bbPlayer = room.players[bbIndex];
+
+      const sbPaid = postBlind(sbPlayer, Number(room.smallBlindAmount || 0));
+      const bbPaid = postBlind(bbPlayer, Number(room.bigBlindAmount || 0));
+
+      sbPlayer.recentAction = `SB ${sbPaid.toLocaleString()}`;
+      bbPlayer.recentAction = `BB ${bbPaid.toLocaleString()}`;
+
+      room.smallBlindPlayerId = sbPlayer?.id || "";
+      room.bigBlindPlayerId = bbPlayer?.id || "";
+      room.currentBet = Math.max(sbPlayer.betAmount, bbPlayer.betAmount);
     }
 
     function resetOtherPlayersActed(room, actorId) {
@@ -884,6 +932,8 @@
         room.currentBet = 0;
         room.turnIndex = -1;
         room.potAmount = 0;
+        room.smallBlindPlayerId = "";
+        room.bigBlindPlayerId = "";
         return;
       }
 
@@ -907,12 +957,16 @@
         syncPlayerChips(p);
       });
 
+      assignBlinds(room);
       room.turnIndex = findFirstTurnFromDealer(room);
 
       const dealer = getDealerPlayer(room);
+      const sb = room.players.find((p) => p.id === room.smallBlindPlayerId);
+      const bb = room.players.find((p) => p.id === room.bigBlindPlayerId);
+
       room.lastActionText =
         openingText ||
-        `${STREET_NAMES[0]} 베팅 라운드가 시작되었습니다. 딜러는 ${dealer?.name || "없음"} 입니다.`;
+        `${STREET_NAMES[0]} 시작 · 딜러 ${dealer?.name || "-"} · SB ${sb?.name || "-"} ${formatMoney(room.smallBlindAmount)} · BB ${bb?.name || "-"} ${formatMoney(room.bigBlindAmount)}`;
     }
 
     function markSettlement(room, reason, text) {
@@ -958,6 +1012,8 @@
       room.potAmount = 0;
       room.currentBet = 0;
       room.currentStreet = 0;
+      room.smallBlindPlayerId = "";
+      room.bigBlindPlayerId = "";
       setResult(room, "fold_win", `${winner.name} 님이 폴드 승리로 팟을 가져갔습니다.`);
       return true;
     }
@@ -1224,6 +1280,8 @@
           </div>
           <div class="mini">
             ${player.id === me.id ? "나" : "상대"}
+            ${player.id === room.smallBlindPlayerId ? " · SB" : ""}
+            ${player.id === room.bigBlindPlayerId ? " · BB" : ""}
             ${player.folded ? " · Fold" : ""}
             ${player.allIn ? " · All-in" : ""}
             ${player.broke ? " · Broke" : ""}
@@ -1347,6 +1405,7 @@
         `내 금액 ${formatMoney(me.stackAmount)}`,
         `현재 베팅 ${formatMoney(me.betAmount)}`,
         `콜 필요 ${formatMoney(toCall)}`,
+        `블라인드 ${formatMoney(room.smallBlindAmount || 0)} / ${formatMoney(room.bigBlindAmount || 0)}`,
         myTurn ? "내 턴" : "대기 중"
       ].forEach((text) => {
         const pill = document.createElement("div");
@@ -1426,6 +1485,16 @@
       potText.textContent = formatMoney(room.potAmount);
       streetText.textContent = STREET_NAMES[room.currentStreet] || "-";
 
+      if (initialAmountInput && document.activeElement !== initialAmountInput) {
+        initialAmountInput.value = String(room.initialAmount || 0);
+      }
+      if (smallBlindInput && document.activeElement !== smallBlindInput) {
+        smallBlindInput.value = String(room.smallBlindAmount || 10);
+      }
+      if (bigBlindInput && document.activeElement !== bigBlindInput) {
+        bigBlindInput.value = String(room.bigBlindAmount || 20);
+      }
+
       waitingList.innerHTML = "";
       room.players.forEach((player, idx) => {
         waitingList.appendChild(createWaitingOrderItem(player, idx, isHost));
@@ -1496,6 +1565,10 @@
           roomCode,
           hostPlayerId: playerId,
           dealerPlayerId: playerId,
+          smallBlindAmount: 10,
+          bigBlindAmount: 20,
+          smallBlindPlayerId: "",
+          bigBlindPlayerId: "",
           status: "waiting",
           initialAmount,
           potAmount: 0,
@@ -1506,7 +1579,7 @@
           settlementReason: "",
           resultMessage: "",
           resultOpen: false,
-          lastActionText: "방이 생성되었습니다. 초기 금액을 확인하고 게임을 시작하세요.",
+          lastActionText: "방이 생성되었습니다. 초기 금액과 블라인드를 확인하고 게임을 시작하세요.",
           createdAt: Date.now(),
           updatedAt: Date.now(),
           players: [
@@ -1614,6 +1687,29 @@
       }
     }
 
+    async function applyBlindHandler() {
+      try {
+        const sb = validateMoney(smallBlindInput.value);
+        const bb = validateMoney(bigBlindInput.value);
+
+        if (bb < sb) throw new Error("빅 블라인드는 스몰 블라인드 이상이어야 합니다.");
+
+        await mutateRoom(state.roomCode, (room) => {
+          if (room.hostPlayerId !== state.playerId) throw new Error("호스트만 블라인드를 바꿀 수 있습니다.");
+          if (room.status !== "waiting") throw new Error("대기방에서만 변경할 수 있습니다.");
+
+          room.smallBlindAmount = sb;
+          room.bigBlindAmount = bb;
+          room.lastActionText = `블라인드가 SB ${sb.toLocaleString()} / BB ${bb.toLocaleString()} 으로 설정되었습니다.`;
+          return room;
+        });
+
+        setMessage(waitingMessage, "블라인드를 적용했습니다.", true);
+      } catch (err) {
+        setMessage(waitingMessage, err.message);
+      }
+    }
+
     async function startGameHandler() {
       try {
         await mutateRoom(state.roomCode, (room) => {
@@ -1624,6 +1720,9 @@
             const firstDealer = room.players.find((p) => !p.left && !p.broke);
             room.dealerPlayerId = firstDealer?.id || room.hostPlayerId;
           }
+
+          if (!room.smallBlindAmount) room.smallBlindAmount = 10;
+          if (!room.bigBlindAmount) room.bigBlindAmount = 20;
 
           setupNewHand(room);
           return room;
@@ -1649,7 +1748,8 @@
           player.hasActedThisStreet = true;
           syncPlayerChips(player);
 
-          setRecentAction(room, player.id, toCall === 0 ? "CHECK" : "CALL");
+          clearRecentActions(room);
+          player.recentAction = toCall === 0 ? "CHECK" : "CALL";
           room.lastActionText =
             toCall === 0
               ? `${player.name}: Check`
@@ -1693,7 +1793,8 @@
 
           room.currentBet = targetBet;
           resetOtherPlayersActed(room, player.id);
-          setRecentAction(room, player.id, beforeCurrentBet === 0 ? "BET" : "RAISE");
+          clearRecentActions(room);
+          player.recentAction = beforeCurrentBet === 0 ? "BET" : "RAISE";
           room.lastActionText =
             beforeCurrentBet === 0
               ? `${player.name}: Bet ${targetBet.toLocaleString()}`
@@ -1718,7 +1819,8 @@
 
           player.folded = true;
           player.hasActedThisStreet = true;
-          setRecentAction(room, player.id, "FOLD");
+          clearRecentActions(room);
+          player.recentAction = "FOLD";
           room.lastActionText = `${player.name}: Fold`;
 
           evaluateGameFlowAfterAction(room, actorIndex);
@@ -1753,7 +1855,8 @@
             resetOtherPlayersActed(room, player.id);
           }
 
-          setRecentAction(room, player.id, "ALL-IN");
+          clearRecentActions(room);
+          player.recentAction = "ALL-IN";
           room.lastActionText =
             totalBetAfter > beforeCurrentBet
               ? `${player.name}: All-in / Raise ${moved.toLocaleString()}`
@@ -1819,6 +1922,8 @@
           room.turnIndex = -1;
           room.handPhase = "settled";
           room.settlementReason = "";
+          room.smallBlindPlayerId = "";
+          room.bigBlindPlayerId = "";
           room.resultOpen = true;
           room.resultMessage = [...payoutMap.values()]
             .filter((x) => x.amount > 0)
@@ -1906,6 +2011,14 @@
               room.dealerPlayerId = active[0]?.id || "";
             }
 
+            if (room.smallBlindPlayerId === state.playerId) {
+              room.smallBlindPlayerId = "";
+            }
+
+            if (room.bigBlindPlayerId === state.playerId) {
+              room.bigBlindPlayerId = "";
+            }
+
             updateBrokeFlags(room);
             return room;
           });
@@ -1927,6 +2040,7 @@
     createRoomBtn.addEventListener("click", createRoomHandler);
     joinRoomBtn.addEventListener("click", joinRoomHandler);
     applyInitialAmountBtn.addEventListener("click", applyInitialAmountHandler);
+    applyBlindBtn.addEventListener("click", applyBlindHandler);
     startGameBtn.addEventListener("click", startGameHandler);
     leaveRoomBtn.addEventListener("click", leaveRoomAction);
     copyLinkBtn.addEventListener("click", copyLinkHandler);

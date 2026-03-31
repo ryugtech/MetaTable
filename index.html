@@ -595,8 +595,7 @@
       selectedRechargePlayerId: "",
       isSheetOpen: false,
       lastSeenResultMessage: "",
-      _lastPotSig: "",
-      autoOpenSheetToken: ""
+      _lastPotSig: ""
     };
 
     const authView = document.getElementById("authView");
@@ -885,8 +884,6 @@
         room.currentBet = 0;
         room.turnIndex = -1;
         room.potAmount = 0;
-        room.autoOpenSheetForPlayerId = "";
-        room.autoOpenSheetTurnToken = "";
         return;
       }
 
@@ -911,9 +908,6 @@
       });
 
       room.turnIndex = findFirstTurnFromDealer(room);
-      const currentTurnPlayer = room.players[room.turnIndex];
-      room.autoOpenSheetForPlayerId = currentTurnPlayer?.id || "";
-      room.autoOpenSheetTurnToken = currentTurnPlayer ? `${Date.now()}_${currentTurnPlayer.id}_${room.currentStreet}` : "";
 
       const dealer = getDealerPlayer(room);
       room.lastActionText =
@@ -926,8 +920,6 @@
       room.handPhase = "settlement";
       room.settlementReason = reason;
       room.turnIndex = -1;
-      room.autoOpenSheetForPlayerId = "";
-      room.autoOpenSheetTurnToken = "";
       room.lastActionText = text;
     }
 
@@ -966,8 +958,6 @@
       room.potAmount = 0;
       room.currentBet = 0;
       room.currentStreet = 0;
-      room.autoOpenSheetForPlayerId = "";
-      room.autoOpenSheetTurnToken = "";
       setResult(room, "fold_win", `${winner.name} 님이 폴드 승리로 팟을 가져갔습니다.`);
       return true;
     }
@@ -989,9 +979,6 @@
       });
 
       room.turnIndex = findFirstTurnFromDealer(room);
-      const currentTurnPlayer = room.players[room.turnIndex];
-      room.autoOpenSheetForPlayerId = currentTurnPlayer?.id || "";
-      room.autoOpenSheetTurnToken = currentTurnPlayer ? `${Date.now()}_${currentTurnPlayer.id}_${room.currentStreet}` : "";
       room.lastActionText = `${STREET_NAMES[room.currentStreet]} 라운드가 시작되었습니다.`;
     }
 
@@ -1022,9 +1009,6 @@
       }
 
       room.turnIndex = findNextTurnIndex(room, actorIndex);
-      const currentTurnPlayer = room.players[room.turnIndex];
-      room.autoOpenSheetForPlayerId = currentTurnPlayer?.id || "";
-      room.autoOpenSheetTurnToken = currentTurnPlayer ? `${Date.now()}_${currentTurnPlayer.id}_${room.currentStreet}` : "";
     }
 
     function roomPath(code) {
@@ -1116,7 +1100,6 @@
       state.selectedWinnersByPot = {};
       state.selectedRechargePlayerId = "";
       state.lastSeenResultMessage = "";
-      state.autoOpenSheetToken = "";
       authView.classList.remove("hidden");
       roomView.classList.add("hidden");
       closeSheet(true);
@@ -1247,7 +1230,7 @@
             ${recentAction}
           </div>
           <div class="amount-tags">
-            <div class="pill">스택 ${formatMoney(player.stackAmount)}</div>
+            <div class="pill">금액 ${formatMoney(player.stackAmount)}</div>
             <div class="pill">테이블 ${formatMoney(player.betAmount)}</div>
             <div class="pill">누적 ${formatMoney(player.committedAmount)}</div>
           </div>
@@ -1361,7 +1344,7 @@
       const toCall = Math.max(0, room.currentBet - Number(me.betAmount || 0));
 
       [
-        `내 스택 ${formatMoney(me.stackAmount)}`,
+        `내 금액 ${formatMoney(me.stackAmount)}`,
         `현재 베팅 ${formatMoney(me.betAmount)}`,
         `콜 필요 ${formatMoney(toCall)}`,
         myTurn ? "내 턴" : "대기 중"
@@ -1411,21 +1394,6 @@
     function toggleSheet() {
       if (!state.room || state.room.status !== "playing") return;
       state.isSheetOpen ? closeSheet() : openSheet();
-    }
-
-    function maybeAutoOpenSheet(room, me) {
-      const token = room.autoOpenSheetTurnToken || "";
-      const shouldOpen =
-        room.status === "playing" &&
-        room.handPhase === "betting" &&
-        room.autoOpenSheetForPlayerId === me.id &&
-        token &&
-        token !== state.autoOpenSheetToken;
-
-      if (!shouldOpen) return;
-
-      state.autoOpenSheetToken = token;
-      openSheet();
     }
 
     function renderRoom() {
@@ -1481,7 +1449,6 @@
         closeSheet(true);
       } else {
         actionSheet.classList.remove("hidden");
-        maybeAutoOpenSheet(room, me);
       }
     }
 
@@ -1540,8 +1507,6 @@
           resultMessage: "",
           resultOpen: false,
           lastActionText: "방이 생성되었습니다. 초기 금액을 확인하고 게임을 시작하세요.",
-          autoOpenSheetForPlayerId: "",
-          autoOpenSheetTurnToken: "",
           createdAt: Date.now(),
           updatedAt: Date.now(),
           players: [
@@ -1717,7 +1682,7 @@
 
           const additional = targetBet - Number(player.betAmount || 0);
           if (additional > player.stackAmount) {
-            throw new Error("스택이 부족합니다.");
+            throw new Error("금액이 부족합니다.");
           }
 
           player.stackAmount -= additional;
@@ -1854,8 +1819,6 @@
           room.turnIndex = -1;
           room.handPhase = "settled";
           room.settlementReason = "";
-          room.autoOpenSheetForPlayerId = "";
-          room.autoOpenSheetTurnToken = "";
           room.resultOpen = true;
           room.resultMessage = [...payoutMap.values()]
             .filter((x) => x.amount > 0)
@@ -1941,11 +1904,6 @@
 
             if (room.dealerPlayerId === state.playerId) {
               room.dealerPlayerId = active[0]?.id || "";
-            }
-
-            if (room.autoOpenSheetForPlayerId === state.playerId) {
-              room.autoOpenSheetForPlayerId = "";
-              room.autoOpenSheetTurnToken = "";
             }
 
             updateBrokeFlags(room);

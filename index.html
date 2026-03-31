@@ -655,6 +655,12 @@
     const resultText = document.getElementById("resultText");
     const resultCloseBtn = document.getElementById("resultCloseBtn");
 
+    function setMessage(element, message = "", isOk = false) {
+        if (!element) return;
+        element.textContent = message || "";
+        element.classList.toggle("ok", !!message && isOk);
+        }
+
     function sanitizeRoomCode(value = "") {
       return String(value).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
     }

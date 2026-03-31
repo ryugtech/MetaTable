@@ -76,6 +76,7 @@
       border: 1px solid rgba(255,255,255,0.08);
       font-size: 12px;
       font-weight: 700;
+      color: #fff;
     }
     .action-pill {
       background: #1d4ed8;
@@ -179,7 +180,6 @@
       gap: 10px;
       flex-wrap: wrap;
       align-items: flex-end;
-      min-height: 72px;
       margin-top: 8px;
     }
     .chip-stack {
@@ -206,6 +206,14 @@
     .green-chip { background: #22c55e; }
     .black-chip { background: #111827; }
     .gold-chip { background: #eab308; }
+    .empty-stack {
+      background: #111827;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 6px 10px;
+      color: #94a3b8;
+      display: inline-block;
+    }
 
     .sidepot-box, .recharge-box {
       background: #0f172a;
@@ -581,10 +589,12 @@
       playerName: "",
       room: null,
       roomUnsub: null,
+      roomMissingTimer: null,
       selectedWinnersByPot: {},
       selectedRechargePlayerId: "",
       isSheetOpen: false,
-      lastSeenResultMessage: ""
+      lastSeenResultMessage: "",
+      joinInProgress: false
     };
 
     const authView = document.getElementById("authView");
@@ -1115,7 +1125,16 @@
       if (room) roomCodeInput.value = room;
     }
 
+    function clearRoomMissingTimer() {
+      if (state.roomMissingTimer) {
+        clearTimeout(state.roomMissingTimer);
+        state.roomMissingTimer = null;
+      }
+    }
+
     function leaveRoomLocalOnly() {
+      clearRoomMissingTimer();
+
       if (state.roomUnsub) {
         state.roomUnsub();
         state.roomUnsub = null;
@@ -1126,6 +1145,7 @@
       state.selectedWinnersByPot = {};
       state.selectedRechargePlayerId = "";
       state.lastSeenResultMessage = "";
+      state.joinInProgress = false;
       clearSession();
       roomView.classList.add("hidden");
       authView.classList.remove("hidden");
@@ -1133,7 +1153,6 @@
       setMessage(waitingMessage, "");
       setMessage(hostSettleMessage, "");
       setMessage(myActionMessage, "");
-      setMessage(authMessage, "");
     }
 
     async function createRoomAction() {
@@ -1208,6 +1227,7 @@
 
       state.roomCode = roomCode;
       state.playerName = playerName;
+      state.joinInProgress = false;
       saveSession();
       subscribeRoom(roomCode);
     }
@@ -1241,7 +1261,7 @@
         throw new Error("대기방에서만 참가할 수 있습니다.");
       }
 
-      const room = await mutateRoom(roomCode, (roomData) => {
+      await mutateRoom(roomCode, (roomData) => {
         if (!roomData) throw new Error("방을 찾을 수 없습니다.");
         if (roomData.status !== "waiting") throw new Error("대기방에서만 참가할 수 있습니다.");
 
@@ -1291,10 +1311,9 @@
         roomData.lastActionText = `${playerName} 님이 대기방에 참가했습니다.`;
       });
 
-      if (!room) throw new Error("방 참가에 실패했습니다.");
-
       state.roomCode = roomCode;
       state.playerName = playerName;
+      state.joinInProgress = true;
       saveSession();
       subscribeRoom(roomCode);
     }
@@ -1321,16 +1340,19 @@
         }
       } catch {}
       leaveRoomLocalOnly();
+      setMessage(authMessage, "");
     }
 
     function subscribeRoom(roomCode) {
+      clearRoomMissingTimer();
+
       if (state.roomUnsub) {
         state.roomUnsub();
         state.roomUnsub = null;
       }
 
       const roomRef = ref(db, `rooms/${roomCode}`);
-      state.roomUnsub = onValue(roomRef, (snapshot) => {
+      state.roomUnsub = onValue(roomRef, async (snapshot) => {
         if (!snapshot.exists()) {
           setMessage(authMessage, "방이 삭제되었거나 존재하지 않습니다.");
           leaveRoomLocalOnly();
@@ -1341,16 +1363,45 @@
         state.room = enrichRoom(room);
 
         const stillInRoom = room.players.some((p) => p.id === state.playerId && !p.left);
-        if (!stillInRoom) {
-          setMessage(authMessage, "방에서 제외되었습니다.");
-          leaveRoomLocalOnly();
+
+        if (stillInRoom) {
+          clearRoomMissingTimer();
+          state.joinInProgress = false;
+          renderRoom();
+
+          if (state.room.resultOpen && state.room.resultMessage && state.lastSeenResultMessage !== state.room.resultMessage) {
+            showResultOverlay(state.room.resultMessage);
+          }
           return;
         }
 
-        renderRoom();
+        if (!state.roomMissingTimer) {
+          state.roomMissingTimer = setTimeout(async () => {
+            try {
+              const confirmSnap = await get(roomRef);
+              if (!confirmSnap.exists()) {
+                setMessage(authMessage, "방이 삭제되었거나 존재하지 않습니다.");
+                leaveRoomLocalOnly();
+                return;
+              }
 
-        if (state.room.resultOpen && state.room.resultMessage && state.lastSeenResultMessage !== state.room.resultMessage) {
-          showResultOverlay(state.room.resultMessage);
+              const confirmRoom = confirmSnap.val();
+              const confirmedMe = confirmRoom.players.some((p) => p.id === state.playerId && !p.left);
+
+              if (!confirmedMe) {
+                if (state.joinInProgress) {
+                  setMessage(authMessage, "방 참가 반영에 실패했습니다. 다시 참가해 주세요.");
+                } else {
+                  setMessage(authMessage, "방에서 제외되었습니다.");
+                }
+                leaveRoomLocalOnly();
+              }
+            } catch (err) {
+              setMessage(authMessage, friendlyFirebaseError(err, "방 확인에 실패했습니다."));
+            } finally {
+              clearRoomMissingTimer();
+            }
+          }, 1500);
         }
       }, (error) => {
         setMessage(authMessage, friendlyFirebaseError(error, "방 구독에 실패했습니다."));
@@ -1358,7 +1409,7 @@
     }
 
     function renderChipStacks(chips) {
-      return CHIP_META.map((meta) => {
+      const html = CHIP_META.map((meta) => {
         const count = Number(chips?.[meta.key] || 0);
         if (count <= 0) return "";
         const visible = Math.min(count, 8);
@@ -1372,6 +1423,8 @@
           </div>
         `;
       }).join("");
+
+      return html || `<div class="empty-stack">없음</div>`;
     }
 
     function renderWaitingList() {
@@ -1576,10 +1629,8 @@
       joinRoomBtn.disabled = !state.authReady;
       if (!state.authReady) {
         setMessage(authMessage, "Firebase 인증 연결 중...");
-      } else {
-        if (authMessage.textContent === "Firebase 인증 연결 중...") {
-          setMessage(authMessage, "");
-        }
+      } else if (authMessage.textContent === "Firebase 인증 연결 중...") {
+        setMessage(authMessage, "");
       }
     }
 
@@ -2025,4 +2076,4 @@
     renderAuthReadyState();
   </script>
 </body>
-</html>
+          </html>

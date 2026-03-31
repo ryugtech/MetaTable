@@ -723,6 +723,21 @@
       return room.players.filter((p) => !p.left && !p.folded && !p.broke && !p.allIn);
     }
 
+    function getDealerPlayer(room) {
+      return room.players.find((p) => p.id === room.dealerPlayerId && !p.left) || null;
+    }
+
+    function findNextDealerPlayerId(room) {
+      const players = room.players.filter((p) => !p.left && !p.broke);
+      if (players.length === 0) return "";
+      if (players.length === 1) return players[0].id;
+
+      const currentIndex = players.findIndex((p) => p.id === room.dealerPlayerId);
+      if (currentIndex === -1) return players[0].id;
+
+      return players[(currentIndex + 1) % players.length].id;
+    }
+
     function findNextTurnIndex(room, fromIndex) {
       if (room.players.length === 0) return -1;
       for (let i = 1; i <= room.players.length; i++) {
@@ -856,9 +871,10 @@
       });
 
       room.turnIndex = findFirstActableIndex(room);
+      const dealer = getDealerPlayer(room);
       room.lastActionText =
         openingText ||
-        `${STREET_NAMES[0]} 베팅 라운드가 시작되었습니다. 딜러는 ${room.players.find((p) => p.id === room.hostPlayerId)?.name || "호스트"} 입니다.`;
+        `${STREET_NAMES[0]} 베팅 라운드가 시작되었습니다. 딜러는 ${dealer?.name || "없음"} 입니다.`;
     }
 
     function markSettlement(room, reason, text) {
@@ -1135,6 +1151,7 @@
       const room = {
         roomCode,
         hostPlayerId: playerId,
+        dealerPlayerId: playerId,
         status: "waiting",
         initialAmount,
         potAmount: 0,
@@ -1616,6 +1633,12 @@
         await mutateRoom(state.roomCode, (room) => {
           if (room.status !== "waiting") throw new Error("이미 게임 중입니다.");
           if (room.hostPlayerId !== state.playerId) throw new Error("호스트만 가능합니다.");
+
+          if (!room.dealerPlayerId) {
+            const firstDealer = room.players.find((p) => !p.left && !p.broke);
+            room.dealerPlayerId = firstDealer?.id || room.hostPlayerId;
+          }
+
           setupNewHand(room);
         });
         setMessage(waitingMessage, "게임을 시작했습니다.", true);
@@ -1828,6 +1851,11 @@
         await mutateRoom(state.roomCode, (room) => {
           if (room.hostPlayerId !== state.playerId) throw new Error("호스트만 가능합니다.");
           if (room.handPhase !== "settled") throw new Error("아직 이전 판이 끝나지 않았습니다.");
+
+          room.players = room.players.filter((p) => !p.left);
+          updateBrokeFlags(room);
+          room.dealerPlayerId = findNextDealerPlayerId(room);
+
           setupNewHand(room, "새 판이 시작되었습니다.");
         });
         setMessage(hostSettleMessage, "새 판을 시작했습니다.", true);

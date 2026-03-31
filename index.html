@@ -575,11 +575,6 @@
     const auth = getAuth(app);
     const db = getDatabase(app);
 
-    signInAnonymously(auth).catch((err) => {
-        console.error("인증 실패:", err);
-        setMessage(authMessage, "인증에 실패했습니다: " + err.message);
-        });
-
     const MIN_UNIT = 10;
     const MAX_PLAYERS = 4;
     const STREET_NAMES = ["프리플랍", "플랍", "턴", "리버"];
@@ -656,10 +651,15 @@
     const resultCloseBtn = document.getElementById("resultCloseBtn");
 
     function setMessage(element, message = "", isOk = false) {
-        if (!element) return;
-        element.textContent = message || "";
-        element.classList.toggle("ok", !!message && isOk);
-        }
+      if (!element) return;
+      element.textContent = message || "";
+      element.classList.toggle("ok", !!message && isOk);
+    }
+
+    function formatMoney(value) {
+      const amount = Math.max(0, Math.floor(Number(value) || 0));
+      return `₩${amount.toLocaleString("ko-KR")}`;
+    }
 
     function sanitizeRoomCode(value = "") {
       return String(value).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
@@ -1053,7 +1053,10 @@
         const room = structuredClone(current);
 
         try {
-          mutator(room);
+          const nextValue = mutator(room);
+          if (nextValue === null) {
+            return null;
+          }
           room.updatedAt = Date.now();
           return room;
         } catch (err) {
@@ -1063,54 +1066,85 @@
       });
 
       if (capturedError) throw new Error(capturedError);
-      if (!result.committed || !result.snapshot.exists()) {
+      if (!result.committed) {
         throw new Error(capturedError || "요청이 적용되지 않았습니다.");
       }
-      return result.snapshot.val();
+      return result.snapshot.exists() ? result.snapshot.val() : null;
     }
 
     async function createRoomAction() {
-    const playerName = normalizeName(playerNameInput.value);
-    if (!playerName) throw new Error("이름을 입력하세요.");
+      const playerName = normalizeName(playerNameInput.value);
+      if (!playerName) throw new Error("이름을 입력하세요.");
 
-    let roomCode = "";
-    let roomRef = null; // 1. 변수를 밖에서 미리 선언합니다.
+      let roomCode = "";
+      let roomRef = null;
 
-    for (let i = 0; i < 5; i++) {
-        const candidate = Math.random().toString(36).toUpperCase().slice(2, 8);
-        const candidateRef = ref(db, `rooms/${candidate}`); // 임시 변수 사용
+      for (let i = 0; i < 10; i++) {
+        const candidate = Math.random()
+          .toString(36)
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, "")
+          .slice(2, 8);
+
+        if (candidate.length < 6) continue;
+
+        const candidateRef = ref(db, `rooms/${candidate}`);
         const snap = await get(candidateRef);
+
         if (!snap.exists()) {
-        roomCode = candidate;
-        roomRef = candidateRef; // 2. 찾은 참조를 저장합니다.
-        break;
+          roomCode = candidate;
+          roomRef = candidateRef;
+          break;
         }
-    }
+      }
 
-    if (!roomCode || !roomRef) throw new Error("방 코드를 생성하지 못했습니다.");
+      if (!roomCode || !roomRef) throw new Error("방 코드를 생성하지 못했습니다.");
 
-    const playerId = createId();
-    const room = {
+      const playerId = createId();
+      const initialAmount = 5000;
+
+      const room = {
         roomCode,
+        hostPlayerId: playerId,
         status: "waiting",
-        // ... (기존 방 데이터 객체 내용)
+        initialAmount,
+        potAmount: 0,
+        currentBet: 0,
+        currentStreet: 0,
+        turnIndex: -1,
+        handPhase: "settled",
+        settlementReason: "",
+        resultMessage: "",
+        resultOpen: false,
+        lastActionText: "방이 생성되었습니다. 초기 금액을 확인하고 게임을 시작하세요.",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
         players: [
-        {
+          {
             id: playerId,
             name: playerName,
-            // ...
-        }
+            stackAmount: initialAmount,
+            stackChips: amountToChips(initialAmount),
+            betAmount: 0,
+            betChips: amountToChips(0),
+            committedAmount: 0,
+            folded: false,
+            allIn: false,
+            broke: false,
+            left: false,
+            hasActedThisStreet: false,
+            recentAction: ""
+          }
         ]
-    };
+      };
 
-    // 3. 이제 밖에서도 roomRef를 사용할 수 있습니다.
-    await set(roomRef, room); 
-    
-    state.roomCode = roomCode;
-    state.playerId = playerId;
-    state.playerName = playerName;
-    saveSession();
-    subscribeRoom(roomCode);
+      await set(roomRef, room);
+
+      state.roomCode = roomCode;
+      state.playerId = playerId;
+      state.playerName = playerName;
+      saveSession();
+      subscribeRoom(roomCode);
     }
 
     async function joinRoomAction() {
@@ -1260,7 +1294,7 @@
                 ${player.id === state.room.hostPlayerId ? "🎩" : ""}
               </div>
               <div class="mini">
-                순서 ${player.order}
+                순서 ${state.room.players.findIndex((p) => p.id === player.id) + 1}
                 ${player.id === state.room.hostPlayerId ? " · 호스트" : ""}
                 ${player.id === state.playerId ? " · 나" : ""}
                 ${player.left ? " · 나감" : ""}

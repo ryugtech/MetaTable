@@ -1846,7 +1846,7 @@
             }
           }
 
-          const payoutLines = [...payoutMap.values()]
+            const payoutLines = [...payoutMap.values()]
             .filter((x) => x.amount > 0)
             .map((x) => `${x.name} 님이 ${x.amount.toLocaleString()}원을 가져갔습니다.`)
             .join("\n");

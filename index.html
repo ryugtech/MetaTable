@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>포커 칩 룸</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :root {
+      --bg: #0b1220;
+      --card: #111827;
+      --card-2: #1f2937;
+      --muted: #94a3b8;
+      --line: rgba(255,255,255,0.08);
+      --blue: #2563eb;
+      --green: #16a34a;
+      --red: #dc2626;
+      --yellow: #d97706;
+      --white: #ffffff;
+    }
+
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, rgba(37,99,235,0.15), transparent 30%), var(--bg);
+      color: var(--white);
+      font-family: Arial, sans-serif;
+      min-height: 100vh;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 840px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    .card {
+      background: rgba(17, 24, 39, 0.94);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .title {
+      font-size: 24px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .col {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    input, button, select {
+      border: none;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 15px;
+    }
+
+    input, select {
+      background: #0f172a;
+      color: white;
+      border: 1px solid var(--line);
+      width: 100%;
+    }
+
+    button {
+      color: white;
+      background: #334155;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    button.primary { background: var(--blue); }
+    button.green { background: var(--green); }
+    button.red { background: var(--red); }
+    button.orange { background: var(--yellow); }
+    button.ghost { background: #475569; }
+
+    .grow { flex: 1; min-width: 0; }
+    .full { width: 100%; }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #0f172a;
+      color: #cbd5e1;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid var(--line);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .stat-box {
+      background: #0f172a;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .stat-value {
+      font-size: 22px;
+      font-weight: 900;
+    }
+
+    .players {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .player-card {
+      background: #0f172a;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+    }
+
+    .player-card.current-turn {
+      outline: 2px solid #60a5fa;
+      box-shadow: 0 0 0 4px rgba(96,165,250,0.15);
+    }
+
+    .player-card.me {
+      border-color: rgba(34,197,94,0.5);
+    }
+
+    .player-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .player-name {
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .mini {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .amounts {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .amount-chip {
+      background: #1e293b;
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .stack-view {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      min-height: 90px;
+      padding: 8px 0 0;
+    }
+
+    .chip-stack {
+      min-width: 48px;
+      text-align: center;
+    }
+
+    .discs {
+      height: 58px;
+      display: flex;
+      flex-direction: column-reverse;
+      align-items: center;
+      justify-content: flex-start;
+      margin-bottom: 6px;
+    }
+
+    .disc {
+      width: 38px;
+      height: 12px;
+      border-radius: 999px;
+      border: 2px solid rgba(255,255,255,0.95);
+      margin-top: -5px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.25);
+    }
+
+    .disc.red { background: #ef4444; }
+    .disc.blue { background: #3b82f6; }
+    .disc.green { background: #22c55e; }
+    .disc.black { background: #111827; }
+    .disc.gold { background: #eab308; }
+
+    .chip-label {
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .chip-count {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .chip-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .chip-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: #0f172a;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .chip-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .chip-circle {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: 4px solid rgba(255,255,255,0.95);
+      flex-shrink: 0;
+    }
+
+    .chip-red { background: #ef4444; }
+    .chip-blue { background: #3b82f6; }
+    .chip-green { background: #22c55e; }
+    .chip-black { background: #111827; }
+    .chip-gold { background: #eab308; }
+
+    .chip-title {
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .chip-sub {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .chip-buttons {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .chip-buttons button {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      font-size: 18px;
+      border-radius: 10px;
+    }
+
+    .host-order-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .order-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: #0f172a;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .order-left {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .order-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .notice {
+      font-size: 13px;
+      color: #fca5a5;
+      margin-top: 8px;
+      min-height: 18px;
+    }
+
+    .ok {
+      color: #86efac;
+    }
+
+    .share-box {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .share-link {
+      background: #0f172a;
+      border: 1px solid var(--line);
+      color: #cbd5e1;
+      border-radius: 12px;
+      padding: 12px;
+      word-break: break-all;
+      flex: 1;
+      min-width: 0;
+    }
+
+    @media (max-width: 700px) {
+      .players {
+        grid-template-columns: 1fr;
+      }
+
+      .stats {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div id="authView" class="card">
+      <div class="title">포커 칩 룸</div>
+      <div class="subtitle">최대 4명이 같은 방에 접속해서 칩, 현재 베팅, 순서를 함께 봅니다.</div>
+
+      <div class="col">
+        <input id="playerNameInput" type="text" maxlength="16" placeholder="내 이름" />
+        <div class="row">
+          <button id="createRoomBtn" class="primary grow">방 만들기</button>
+        </div>
+        <div class="row">
+          <input id="roomCodeInput" class="grow" type="text" maxlength="6" placeholder="방 코드" />
+          <button id="joinRoomBtn" class="green">방 참가</button>
+        </div>
+        <div id="authMessage" class="notice"></div>
+      </div>
+    </div>
+
+    <div id="roomView" class="hidden">
+      <div class="card">
+        <div class="row" style="justify-content: space-between; align-items: center;">
+          <div class="col" style="gap: 6px;">
+            <div class="title" style="margin: 0;">방 코드 <span id="roomCodeText"></span></div>
+            <div class="subtitle" style="margin: 0;">같은 코드를 다른 폰에서 입력하면 참가됩니다.</div>
+          </div>
+          <div class="pill" id="meRolePill">플레이어</div>
+        </div>
+
+        <div class="share-box" style="margin-top: 12px;">
+          <div id="shareLink" class="share-link"></div>
+          <button id="copyLinkBtn" class="ghost">링크 복사</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="stats">
+          <div class="stat-box">
+            <div class="stat-label">초기 금액</div>
+            <div class="stat-value" id="initialAmountText">₩0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">팟</div>
+            <div class="stat-value" id="potText">₩0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">현재 올라온 총 베팅</div>
+            <div class="stat-value" id="tableBetText">₩0</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="title" style="font-size: 20px;">플레이어</div>
+        <div class="subtitle">각자 현재 올려둔 칩을 모두 확인할 수 있습니다.</div>
+        <div id="playersList" class="players"></div>
+      </div>
+
+      <div id="hostPanel" class="card hidden">
+        <div class="title" style="font-size: 20px;">호스트 설정</div>
+        <div class="subtitle">초기 금액, 베팅 순서, 현재 턴, 팟 정리를 관리합니다.</div>
+
+        <div class="row" style="margin-bottom: 12px;">
+          <input id="initialAmountInput" class="grow" type="number" min="10" step="10" placeholder="예: 5000" />
+          <button id="applyInitialAmountBtn" class="primary">초기 금액 적용</button>
+        </div>
+
+        <div class="row" style="margin-bottom: 12px;">
+          <button id="prevTurnBtn" class="ghost grow">이전 턴</button>
+          <button id="nextTurnBtn" class="primary grow">다음 턴</button>
+        </div>
+
+        <div class="row" style="margin-bottom: 12px;">
+          <button id="collectBetsBtn" class="orange grow">현재 베팅 → 팟</button>
+          <button id="refundBetsBtn" class="ghost grow">현재 베팅 전부 환불</button>
+          <button id="resetPotBtn" class="red grow">팟 0으로</button>
+        </div>
+
+        <div class="title" style="font-size: 18px; margin-top: 8px;">베팅 순서 설정</div>
+        <div class="subtitle">위/아래로 순서를 바꾸면 턴 표시도 함께 바뀝니다.</div>
+        <div id="hostOrderList" class="host-order-list"></div>
+
+        <div id="hostMessage" class="notice"></div>
+      </div>
+
+      <div id="myPanel" class="card hidden">
+        <div class="title" style="font-size: 20px;">내 칩 조작</div>
+        <div class="subtitle">칩을 추가하면 내 스택에서 빠지고 테이블 베팅으로 올라갑니다.</div>
+
+        <div id="myStatus" class="row" style="margin-bottom: 12px;"></div>
+        <div id="chipControls" class="chip-controls"></div>
+
+        <div class="row" style="margin-top: 12px;">
+          <button id="clearMyBetBtn" class="ghost full">내 현재 베팅 전부 되돌리기</button>
+        </div>
+
+        <div id="myMessage" class="notice"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = "/.netlify/functions/game";
+
+    const CHIP_META = [
+      { value: 10, key: "10", colorClass: "chip-red", discClass: "red" },
+      { value: 50, key: "50", colorClass: "chip-blue", discClass: "blue" },
+      { value: 100, key: "100", colorClass: "chip-green", discClass: "green" },
+      { value: 500, key: "500", colorClass: "chip-black", discClass: "black" },
+      { value: 1000, key: "1000", colorClass: "chip-gold", discClass: "gold" }
+    ];
+
+    const state = {
+      roomCode: "",
+      playerId: "",
+      playerName: "",
+      room: null,
+      pollTimer: null
+    };
+
+    const authView = document.getElementById("authView");
+    const roomView = document.getElementById("roomView");
+
+    const playerNameInput = document.getElementById("playerNameInput");
+    const roomCodeInput = document.getElementById("roomCodeInput");
+    const createRoomBtn = document.getElementById("createRoomBtn");
+    const joinRoomBtn = document.getElementById("joinRoomBtn");
+    const authMessage = document.getElementById("authMessage");
+
+    const roomCodeText = document.getElementById("roomCodeText");
+    const meRolePill = document.getElementById("meRolePill");
+    const initialAmountText = document.getElementById("initialAmountText");
+    const potText = document.getElementById("potText");
+    const tableBetText = document.getElementById("tableBetText");
+    const shareLink = document.getElementById("shareLink");
+    const copyLinkBtn = document.getElementById("copyLinkBtn");
+
+    const playersList = document.getElementById("playersList");
+    const hostPanel = document.getElementById("hostPanel");
+    const hostOrderList = document.getElementById("hostOrderList");
+    const hostMessage = document.getElementById("hostMessage");
+
+    const initialAmountInput = document.getElementById("initialAmountInput");
+    const applyInitialAmountBtn = document.getElementById("applyInitialAmountBtn");
+    const prevTurnBtn = document.getElementById("prevTurnBtn");
+    const nextTurnBtn = document.getElementById("nextTurnBtn");
+    const collectBetsBtn = document.getElementById("collectBetsBtn");
+    const refundBetsBtn = document.getElementById("refundBetsBtn");
+    const resetPotBtn = document.getElementById("resetPotBtn");
+
+    const myPanel = document.getElementById("myPanel");
+    const myStatus = document.getElementById("myStatus");
+    const chipControls = document.getElementById("chipControls");
+    const clearMyBetBtn = document.getElementById("clearMyBetBtn");
+    const myMessage = document.getElementById("myMessage");
+
+    function formatMoney(value) {
+      return `₩${Number(value || 0).toLocaleString()}`;
+    }
+
+    function saveSession() {
+      localStorage.setItem(
+        "poker-chip-session",
+        JSON.stringify({
+          roomCode: state.roomCode,
+          playerId: state.playerId,
+          playerName: state.playerName
+        })
+      );
+    }
+
+    function loadSession() {
+      try {
+        const raw = localStorage.getItem("poker-chip-session");
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        state.roomCode = parsed.roomCode || "";
+        state.playerId = parsed.playerId || "";
+        state.playerName = parsed.playerName || "";
+        if (state.playerName) playerNameInput.value = state.playerName;
+        if (state.roomCode) roomCodeInput.value = state.roomCode;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    function setMessage(el, message, isOk = false) {
+      el.textContent = message || "";
+      el.classList.toggle("ok", !!isOk);
+    }
+
+    async function api(action, payload = {}) {
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...payload })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.message || "요청 실패");
+      }
+      return data;
+    }
+
+    function chipsAmount(chips) {
+      return (
+        Number(chips["10"] || 0) * 10 +
+        Number(chips["50"] || 0) * 50 +
+        Number(chips["100"] || 0) * 100 +
+        Number(chips["500"] || 0) * 500 +
+        Number(chips["1000"] || 0) * 1000
+      );
+    }
+
+    function stackHtml(chips) {
+      const active = CHIP_META.filter((chip) => Number(chips[chip.key] || 0) > 0);
+
+      if (active.length === 0) {
+        return `<div class="mini">올려둔 칩 없음</div>`;
+      }
+
+      return active.map((chip) => {
+        const count = Number(chips[chip.key] || 0);
+        const visibleCount = Math.min(count, 5);
+        let discs = "";
+
+        for (let i = 0; i < visibleCount; i++) {
+          discs += `<div class="disc ${chip.discClass}"></div>`;
+        }
+
+        return `
+          <div class="chip-stack">
+            <div class="discs">${discs}</div>
+            <div class="chip-label">${chip.value}</div>
+            <div class="chip-count">x ${count}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderPlayers() {
+      if (!state.room) return;
+
+      const currentTurnPlayerId = state.room.currentTurnPlayerId;
+      const myPlayerId = state.playerId;
+
+      playersList.innerHTML = state.room.players.map((player) => {
+        const isMe = player.id === myPlayerId;
+        const isCurrent = player.id === currentTurnPlayerId;
+
+        return `
+          <div class="player-card ${isMe ? "me" : ""} ${isCurrent ? "current-turn" : ""}">
+            <div class="player-top">
+              <div>
+                <div class="player-name">${player.name}</div>
+                <div class="mini">순서 ${player.order}${player.isHost ? " · 호스트" : ""}${isMe ? " · 나" : ""}</div>
+              </div>
+              ${isCurrent ? `<div class="pill">현재 턴</div>` : ""}
+            </div>
+
+            <div class="amounts">
+              <div class="amount-chip">보유 ${formatMoney(player.stackAmount)}</div>
+              <div class="amount-chip">현재 베팅 ${formatMoney(player.betAmount)}</div>
+            </div>
+
+            <div class="mini" style="margin-bottom: 6px;">테이블에 올려둔 칩</div>
+            <div class="stack-view">${stackHtml(player.betChips)}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderHostOrder() {
+      if (!state.room) return;
+
+      hostOrderList.innerHTML = state.room.players.map((player, index) => {
+        return `
+          <div class="order-item">
+            <div class="order-left">
+              <div style="font-weight:800;">${index + 1}. ${player.name}</div>
+              <div class="mini">${player.isHost ? "호스트" : "플레이어"}</div>
+            </div>
+            <div class="order-buttons">
+              <button ${index === 0 ? "disabled" : ""} onclick="moveOrder('${player.id}', 'up')">↑</button>
+              <button ${index === state.room.players.length - 1 ? "disabled" : ""} onclick="moveOrder('${player.id}', 'down')">↓</button>
+              <button onclick="setTurn(${index})">이 턴으로</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderMyPanel() {
+      if (!state.room) return;
+
+      const me = state.room.players.find((p) => p.id === state.playerId);
+      if (!me) {
+        myPanel.classList.add("hidden");
+        return;
+      }
+
+      myPanel.classList.remove("hidden");
+
+      myStatus.innerHTML = `
+        <div class="pill">보유 ${formatMoney(me.stackAmount)}</div>
+        <div class="pill">현재 베팅 ${formatMoney(me.betAmount)}</div>
+      `;
+
+      chipControls.innerHTML = CHIP_META.map((chip) => {
+        const myStackCount = Number(me.stackChips[chip.key] || 0);
+        const myBetCount = Number(me.betChips[chip.key] || 0);
+
+        return `
+          <div class="chip-row">
+            <div class="chip-left">
+              <div class="chip-circle ${chip.colorClass}"></div>
+              <div>
+                <div class="chip-title">${chip.value} 칩</div>
+                <div class="chip-sub">보유 ${myStackCount} / 베팅 ${myBetCount}</div>
+              </div>
+            </div>
+            <div class="chip-buttons">
+              <button onclick="removeChip(${chip.value})">-</button>
+              <button class="primary" onclick="addChip(${chip.value})">+</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderRoom() {
+      if (!state.room) return;
+
+      authView.classList.add("hidden");
+      roomView.classList.remove("hidden");
+
+      roomCodeText.textContent = state.room.roomCode;
+      initialAmountText.textContent = formatMoney(state.room.initialAmount);
+      potText.textContent = formatMoney(state.room.potAmount);
+      tableBetText.textContent = formatMoney(state.room.totalCurrentBets);
+
+      const isHost = state.room.you?.isHost;
+      meRolePill.textContent = isHost ? "호스트" : "플레이어";
+      hostPanel.classList.toggle("hidden", !isHost);
+
+      const share = `${location.origin}${location.pathname}?room=${state.room.roomCode}`;
+      shareLink.textContent = share;
+
+      renderPlayers();
+      renderHostOrder();
+      renderMyPanel();
+    }
+
+    async function refreshRoom(showErrors = false) {
+      if (!state.roomCode) return;
+
+      try {
+        const data = await api("get_room", {
+          roomCode: state.roomCode,
+          playerId: state.playerId
+        });
+
+        state.room = data.room;
+        renderRoom();
+      } catch (err) {
+        if (showErrors) setMessage(authMessage, err.message);
+      }
+    }
+
+    function startPolling() {
+      stopPolling();
+      state.pollTimer = setInterval(() => {
+        refreshRoom(false);
+      }, 1500);
+    }
+
+    function stopPolling() {
+      if (state.pollTimer) {
+        clearInterval(state.pollTimer);
+        state.pollTimer = null;
+      }
+    }
+
+    async function createRoom() {
+      setMessage(authMessage, "");
+      try {
+        const playerName = playerNameInput.value.trim();
+        const data = await api("create_room", { playerName });
+
+        state.roomCode = data.roomCode;
+        state.playerId = data.playerId;
+        state.playerName = playerName;
+        state.room = data.room;
+
+        saveSession();
+        renderRoom();
+        startPolling();
+      } catch (err) {
+        setMessage(authMessage, err.message);
+      }
+    }
+
+    async function joinRoom() {
+      setMessage(authMessage, "");
+      try {
+        const roomCode = roomCodeInput.value.trim().toUpperCase();
+        const playerName = playerNameInput.value.trim();
+
+        const data = await api("join_room", {
+          roomCode,
+          playerName,
+          playerId: state.playerId || ""
+        });
+
+        state.roomCode = data.roomCode;
+        state.playerId = data.playerId;
+        state.playerName = playerName;
+        state.room = data.room;
+
+        saveSession();
+        renderRoom();
+        startPolling();
+      } catch (err) {
+        setMessage(authMessage, err.message);
+      }
+    }
+
+    async function addChip(denomination) {
+      try {
+        const data = await api("add_chip", {
+          roomCode: state.roomCode,
+          playerId: state.playerId,
+          denomination
+        });
+        state.room = data.room;
+        setMessage(myMessage, "");
+        renderRoom();
+      } catch (err) {
+        setMessage(myMessage, err.message);
+      }
+    }
+
+    async function removeChip(denomination) {
+      try {
+        const data = await api("remove_chip", {
+          roomCode: state.roomCode,
+          playerId: state.playerId,
+          denomination
+        });
+        state.room = data.room;
+        setMessage(myMessage, "");
+        renderRoom();
+      } catch (err) {
+        setMessage(myMessage, err.message);
+      }
+    }
+
+    async function clearMyBet() {
+      try {
+        const data = await api("clear_my_bet", {
+          roomCode: state.roomCode,
+          playerId: state.playerId
+        });
+        state.room = data.room;
+        setMessage(myMessage, "내 베팅을 되돌렸습니다.", true);
+        renderRoom();
+      } catch (err) {
+        setMessage(myMessage, err.message);
+      }
+    }
+
+    async function applyInitialAmount() {
+      try {
+        const data = await api("set_initial_amount", {
+          roomCode: state.roomCode,
+          playerId: state.playerId,
+          amount: Number(initialAmountInput.value)
+        });
+        state.room = data.room;
+        setMessage(hostMessage, "초기 금액을 적용했습니다.", true);
+        renderRoom();
+      } catch (err) {
+        setMessage(hostMessage, err.message);
+      }
+    }
+
+    async function moveOrder(targetPlayerId, direction) {
+      try {
+        const data = await api("move_order", {
+          roomCode: state.roomCode,
+          playerId: state.playerId,
+          targetPlayerId,
+          direction
+        });
+        state.room = data.room;
+        setMessage(hostMessage, "베팅 순서를 변경했습니다.", true);
+        renderRoom();
+      } catch (err) {
+        setMessage(hostMessage, err.message);
+      }
+    }
+
+    async function setTurn(turnIndex) {
+      try {
+        const data = await api("set_turn", {
+          roomCode: state.roomCode,
+          playerId: state.playerId,
+          turnIndex
+        });
+        state.room = data.room;
+        setMessage(hostMessage, "현재 턴을 변경했습니다.", true);
+        renderRoom();
+      } catch (err) {
+        setMessage(hostMessage, err.message);
+      }
+    }
+
+    async function nextTurn(step) {
+      try {
+        const data = await api("next_turn", {
+          roomCode: state.roomCode,
+          playerId: state.playerId,
+          step
+        });
+        state.room = data.room;
+        setMessage(hostMessage, "");
+        renderRoom();
+      } catch (err) {
+        setMessage(hostMessage, err.message);
+      }
+    }
+
+    async function collectBets() {
+      try {
+        const data = await api("collect_bets", {
+          roomCode: state.roomCode,
+          playerId: state.playerId
+        });
+        state.room = data.room;
+        setMessage(hostMessage, "현재 베팅을 팟으로 모았습니다.", true);
+        renderRoom();
+      } catch (err) {
+        setMessage(hostMessage, err.message);
+      }
+    }
+
+    async function refundAllBets() {
+      try {
+        const data = await api("refund_all_bets", {
+          roomCode: state.roomCode,
+          playerId: state.playerId
+        });
+        state.room = data.room;
+        setMessage(hostMessage, "현재 베팅을 전부 환불했습니다.", true);
+        renderRoom();
+      } catch (err) {
+        setMessage(hostMessage, err.message);
+      }
+    }
+
+    async function resetPot() {
+      try {
+        const data = await api("reset_pot", {
+          roomCode: state.roomCode,
+          playerId: state.playerId
+        });
+        state.room = data.room;
+        setMessage(hostMessage, "팟을 0으로 초기화했습니다.", true);
+        renderRoom();
+      } catch (err) {
+        setMessage(hostMessage, err.message);
+      }
+    }
+
+    async function copyRoomLink() {
+      try {
+        await navigator.clipboard.writeText(shareLink.textContent);
+        setMessage(hostMessage, "링크를 복사했습니다.", true);
+      } catch {
+        setMessage(hostMessage, "링크 복사에 실패했습니다.");
+      }
+    }
+
+    function applyRoomFromQuery() {
+      const params = new URLSearchParams(location.search);
+      const room = (params.get("room") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+      if (room) {
+        roomCodeInput.value = room;
+      }
+    }
+
+    createRoomBtn.addEventListener("click", createRoom);
+    joinRoomBtn.addEventListener("click", joinRoom);
+    clearMyBetBtn.addEventListener("click", clearMyBet);
+    applyInitialAmountBtn.addEventListener("click", applyInitialAmount);
+    prevTurnBtn.addEventListener("click", () => nextTurn(-1));
+    nextTurnBtn.addEventListener("click", () => nextTurn(1));
+    collectBetsBtn.addEventListener("click", collectBets);
+    refundBetsBtn.addEventListener("click", refundAllBets);
+    resetPotBtn.addEventListener("click", resetPot);
+    copyLinkBtn.addEventListener("click", copyRoomLink);
+
+    window.addChip = addChip;
+    window.removeChip = removeChip;
+    window.moveOrder = moveOrder;
+    window.setTurn = setTurn;
+
+    (async function init() {
+      loadSession();
+      applyRoomFromQuery();
+
+      if (state.roomCode && state.playerId) {
+        await refreshRoom(false);
+        if (state.room) {
+          renderRoom();
+          startPolling();
+        }
+      }
+    })();
+  </script>
+</body>
+</html>
